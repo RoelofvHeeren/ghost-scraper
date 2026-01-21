@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation } from "react-router-dom";
-import { LayoutDashboard, Users, Map, Settings, Activity, Sparkles, Terminal, MessageSquare } from "lucide-react";
+import { LayoutDashboard, Users, Map, Settings, Activity, Sparkles, Terminal } from "lucide-react";
 import clsx from "clsx";
 
 const navItems = [

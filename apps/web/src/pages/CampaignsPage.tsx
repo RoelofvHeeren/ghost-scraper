@@ -9,7 +9,7 @@ type Campaign = {
 };
 
 export function CampaignsPage() {
-    const [campaigns, setCampaigns] = useState<Campaign[]>([
+    const [campaigns] = useState<Campaign[]>([
         {
             id: "1",
             name: "Standard Outreach",

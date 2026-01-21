@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import axios from "axios";
 import { formatDistanceToNow } from "date-fns";
-import { Loader2, ExternalLink, PhoneCall, Check, X } from "lucide-react";
+import { Loader2, ExternalLink } from "lucide-react";
 
 type Lead = {
     id: string;
@@ -56,8 +56,8 @@ export function LeadsPage() {
                         <div className="flex justify-between items-start mb-2">
                             <div className="flex items-center gap-2">
                                 <span className={`px-2 py-1 rounded text-xs font-medium ${lead.status === 'NEW' ? 'bg-blue-100 text-blue-800' :
-                                        lead.status === 'CONTACTED' ? 'bg-green-100 text-green-800' :
-                                            'bg-gray-100 text-gray-800'
+                                    lead.status === 'CONTACTED' ? 'bg-green-100 text-green-800' :
+                                        'bg-gray-100 text-gray-800'
                                     }`}>
                                     {lead.status}
                                 </span>

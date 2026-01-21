@@ -10,14 +10,15 @@
         "preview": "vite preview"
     },
     "dependencies": {
+        "@remix-run/router": "^1.23.2",
         "@tanstack/react-query": "^5.14.0",
         "axios": "^1.6.2",
-        "clsx": "^2.0.0",
+        "clsx": "^2.1.1",
         "lucide-react": "^0.294.0",
         "react": "^18.2.0",
         "react-dom": "^18.2.0",
         "react-router-dom": "^6.20.1",
-        "tailwind-merge": "^2.1.0"
+        "tailwind-merge": "^2.6.0"
     },
     "devDependencies": {
         "@types/react": "^18.2.37",
