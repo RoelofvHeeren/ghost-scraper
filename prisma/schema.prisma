@@ -1,0 +1,212 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SourceType {
+  NEXTDOOR
+  REDDIT
+  FACEBOOK
+  CRAIGSLIST
+  MANUAL_IMPORT
+}
+
+enum LeadStatus {
+  NEW
+  NOTIFIED
+  CONTACTED
+  CALLED
+  BOOKED
+  WON
+  LOST
+  NOT_A_FIT
+}
+
+enum AccountStatus {
+  ACTIVE
+  PAUSED
+  BANNED
+  NEEDS_LOGIN
+  NEEDS_REVIEW
+}
+
+enum ActionType {
+  SCRAPE
+  SCORE
+  ROUTE
+  POST_REPLY
+  LOGIN
+  ERROR
+}
+
+model Client {
+  id          String   @id @default(cuid())
+  name        String
+  createdAt   DateTime @default(now())
+
+  services    ClientService[]
+  areas       ClientServiceArea[]
+  leads       Lead[]
+
+  twilioNumber String?
+}
+
+model ClientService {
+  id            String   @id @default(cuid())
+  clientId      String
+  client        Client   @relation(fields: [clientId], references: [id])
+  serviceType   String
+  includeWords  String[]
+  excludeWords  String[]
+  minValueUsd   Int?
+
+  createdAt     DateTime @default(now())
+}
+
+model ClientServiceArea {
+  id          String   @id @default(cuid())
+  clientId    String
+  client      Client   @relation(fields: [clientId], references: [id])
+
+  city        String
+  state       String?
+  zipCodes    String[]
+  radiusMiles Int?
+
+  createdAt   DateTime @default(now())
+}
+
+model Source {
+  id          String    @id @default(cuid())
+  type        SourceType
+  name        String
+  enabled     Boolean   @default(true)
+  config      Json
+  pollSeconds Int       @default(300)
+
+  createdAt   DateTime  @default(now())
+  candidates  LeadCandidate[]
+  connectorState ConnectorState?
+}
+
+model BotAccount {
+  id              String        @id @default(cuid())
+  platform        SourceType
+  username        String
+  password        String?       // Encrypt? Or use only session
+  email           String?
+  
+  status          AccountStatus @default(ACTIVE)
+  sessionData     Json?         // Cookies / storage state
+  proxyUrl        String?
+  
+  cityMatches     String[]      // List of cities this account covers
+  
+  lastLoginAt     DateTime?
+  lastCaptchaAt   DateTime?
+  dailyPostCount  Int           @default(0)
+  dailyScrapeCount Int          @default(0)
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+model ConnectorState {
+  id              String    @id @default(cuid())
+  sourceId        String    @unique
+  source          Source    @relation(fields: [sourceId], references: [id])
+  
+  cursorData      Json?     // e.g. { after: "t3_xyz" }
+  lastSeenExternalId String?
+  
+  lastRunAt       DateTime?
+  lastSuccessAt   DateTime?
+  errorCount      Int       @default(0)
+  
+  updatedAt       DateTime  @updatedAt
+}
+
+model AutomationLog {
+  id          String      @id @default(cuid())
+  action      ActionType
+  
+  sourceId    String?
+  candidateId String?
+  leadId      String?
+  
+  status      String      // SUCCESS, FAILURE
+  message     String?
+  screenshotUrl String?
+  metadata    Json?
+  
+  createdAt   DateTime    @default(now())
+}
+
+model LeadCandidate {
+  id          String    @id @default(cuid())
+  sourceId    String
+  source      Source    @relation(fields: [sourceId], references: [id])
+
+  externalId  String?
+  url         String?
+  title       String?
+  body        String
+  author      String?
+  postedAt    DateTime?
+  cityHint    String?
+  raw         Json?
+
+  dedupHash   String    @unique
+  createdAt   DateTime  @default(now())
+
+  lead        Lead?
+}
+
+model Lead {
+  id            String     @id @default(cuid())
+  clientId      String
+  client        Client     @relation(fields: [clientId], references: [id])
+
+  candidateId   String     @unique
+  candidate     LeadCandidate @relation(fields: [candidateId], references: [id])
+
+  serviceType   String?
+  score         Int        @default(0)
+  reasons       Json?
+  suggestedReply String?
+
+  status        LeadStatus @default(NEW)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  phoneTrackingNumber String?
+  callEvents    CallEvent[]
+}
+
+model ReplyTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  templateText String
+  tone        String?  // casual, professional
+  tags        String[] // [plumbing, tampa]
+  variationGroupId String?
+  
+  createdAt   DateTime @default(now())
+}
+
+model CallEvent {
+  id        String   @id @default(cuid())
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id])
+
+  from      String?
+  to        String?
+  duration  Int?
+  recordingUrl String?
+
+  createdAt DateTime @default(now())
+}

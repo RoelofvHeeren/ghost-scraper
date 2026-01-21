@@ -1,0 +1,41 @@
+{
+  "name": "ghost-scraper",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm:dev:api\" \"npm:dev:worker\" \"npm:dev:web\"",
+    "dev:api": "npm --workspace apps/api run dev",
+    "dev:worker": "npm --workspace apps/worker run dev",
+    "dev:web": "npm --workspace apps/web run dev",
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@prisma/client": "^7.2.0",
+    "concurrently": "^9.2.1",
+    "dotenv": "^17.2.3",
+    "prisma": "^7.2.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.90.19",
+    "axios": "^1.13.2",
+    "bullmq": "^5.66.5",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "ioredis": "^5.9.2",
+    "lucide-react": "^0.562.0",
+    "openai": "^6.16.0",
+    "playwright": "^1.57.0",
+    "react-router-dom": "^7.12.0",
+    "tailwind-merge": "^3.4.0"
+  }
+}
