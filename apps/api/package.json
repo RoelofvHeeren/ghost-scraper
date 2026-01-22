@@ -1,25 +1,27 @@
 {
   "name": "api",
   "version": "1.0.0",
+  "type": "module",
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "prisma generate --schema=../../prisma/schema.prisma && tsc",
+    "build": "prisma generate --schema=../../prisma/schema.prisma && tsc -b",
     "start": "node dist/server.js"
   },
   "dependencies": {
     "@fastify/cors": "^8.5.0",
     "@fastify/swagger": "^8.13.0",
     "@fastify/swagger-ui": "^2.0.1",
-    "@prisma/client": "^5.7.1",
+    "@prisma/client": "6.2.1",
     "dotenv": "^16.3.1",
     "fastify": "^4.25.2",
     "fastify-type-provider-zod": "^1.1.9",
-    "zod": "^3.22.4"
+    "zod": "^3.22.4",
+    "@ghost-scraper/shared": "1.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.10.5",
-    "prisma": "7.2.0",
+    "prisma": "6.2.1",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3"
   }

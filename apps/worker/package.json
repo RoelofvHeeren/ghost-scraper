@@ -1,19 +1,21 @@
 {
   "name": "worker",
   "version": "1.0.0",
+  "type": "module",
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "prisma generate --schema=../../prisma/schema.prisma && tsc",
+    "build": "prisma generate --schema=../../prisma/schema.prisma && tsc -b",
     "start": "node dist/index.js",
     "test": "playwright test"
   },
   "dependencies": {
     "playwright-extra": "^4.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2"
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "@ghost-scraper/shared": "1.0.0"
   },
   "devDependencies": {
-    "@prisma/client": "7.2.0",
-    "prisma": "7.2.0"
+    "@prisma/client": "6.2.1",
+    "prisma": "6.2.1"
   }
 }

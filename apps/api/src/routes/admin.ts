@@ -23,7 +23,7 @@ export async function adminRoutes(app: FastifyInstance) {
         }
     }, async (req) => {
         return db.client.create({
-            data: req.body
+            data: req.body as any
         });
     });
 
@@ -46,7 +46,7 @@ export async function adminRoutes(app: FastifyInstance) {
         }
     }, async (req) => {
         return db.source.create({
-            data: req.body
+            data: req.body as any
         });
     });
 
@@ -70,7 +70,7 @@ export async function adminRoutes(app: FastifyInstance) {
         }
     }, async (req) => {
         return db.botAccount.create({
-            data: req.body
+            data: req.body as any
         });
     });
 }
