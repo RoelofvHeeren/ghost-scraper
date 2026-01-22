@@ -12,6 +12,7 @@
     "dev:worker": "npm --workspace apps/worker run dev",
     "dev:web": "npm --workspace apps/web run dev",
     "build": "npm run build --workspaces",
+    "start": "npm run start --workspace=apps/api",
     "test": "npm run test --workspaces"
   },
   "keywords": [],
