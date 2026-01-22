@@ -34,6 +34,10 @@ export async function buildApp() {
     await app.register(leadsRoutes);
     await app.register(webhookRoutes, { prefix: "/webhooks" });
 
+    app.get("/", async () => {
+        return { message: "Ghost Scraper API is running", documentation: "/docs", status: "ok" };
+    });
+
     app.get("/health", async () => {
         return { status: "ok", timestamp: new Date().toISOString() };
     });
