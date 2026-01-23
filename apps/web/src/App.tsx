@@ -6,6 +6,9 @@ import { ClientsPage } from "./pages/ClientsPage";
 import { SimulatorPage } from "./pages/SimulatorPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { CampaignsPage } from "./pages/CampaignsPage";
+import { SourcesPage } from "./pages/SourcesPage";
+import { BotAccountsPage } from "./pages/BotAccountsPage";
+import { SettingsPage } from "./pages/SettingsPage";
 
 import { Component, ErrorInfo, ReactNode } from "react";
 
@@ -53,11 +56,11 @@ function App() {
                         <Route element={<Layout />}>
                             <Route path="/" element={<LeadsPage />} />
                             <Route path="/clients" element={<ClientsPage />} />
-                            <Route path="/sources" element={<div>Sources Page</div>} />
-                            <Route path="/accounts" element={<div>Bot Accounts Page</div>} />
+                            <Route path="/sources" element={<SourcesPage />} />
+                            <Route path="/accounts" element={<BotAccountsPage />} />
                             <Route path="/simulator" element={<SimulatorPage />} />
                             <Route path="/campaigns" element={<CampaignsPage />} />
-                            <Route path="/settings" element={<div>Settings Page</div>} />
+                            <Route path="/settings" element={<SettingsPage />} />
                         </Route>
                     </Routes>
                 </BrowserRouter>
