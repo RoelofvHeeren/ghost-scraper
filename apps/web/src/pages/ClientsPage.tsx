@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
-import { Loader2, Plus, Building, MapPin, Phone, Hash, Users } from "lucide-react";
+import { Loader2, Plus, Building, MapPin, Phone, Hash, Users, X } from "lucide-react";
+import { useState } from "react";
+import { Modal } from "../components/Modal";
 
 type Client = {
     id: string;
@@ -12,6 +14,8 @@ type Client = {
 
 export function ClientsPage() {
     const queryClient = useQueryClient();
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [newClientName, setNewClientName] = useState("");
 
     const { data: clients, isLoading } = useQuery({
         queryKey: ["clients"],
@@ -28,8 +32,15 @@ export function ClientsPage() {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["clients"] });
+            setIsModalOpen(false);
+            setNewClientName("");
         },
     });
+
+    const handleCreateClient = () => {
+        if (!newClientName.trim()) return;
+        createClientMutation.mutate({ name: newClientName });
+    };
 
     if (isLoading) {
         return (
@@ -49,10 +60,7 @@ export function ClientsPage() {
                     <p className="text-gray-400">Manage your partners and their target markets.</p>
                 </div>
                 <button
-                    onClick={() => {
-                        const name = prompt("Enter Client Name:");
-                        if (name) createClientMutation.mutate({ name });
-                    }}
+                    onClick={() => setIsModalOpen(true)}
                     className="flex items-center gap-2 bg-teal-accent hover:bg-teal-accent/90 text-white px-5 py-2.5 rounded-xl font-medium transition-all shadow-lg hover:shadow-teal-accent/25 hover:-translate-y-0.5"
                 >
                     <Plus size={18} /> Add New Client
@@ -120,6 +128,39 @@ export function ClientsPage() {
                     </div>
                 )}
             </div>
+
+            {/* Create Client Modal */}
+            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Create New Client">
+                <div className="space-y-4">
+                    <div>
+                        <label className="text-xs text-gray-400 uppercase tracking-wider block mb-1">Client Name</label>
+                        <input
+                            type="text"
+                            value={newClientName}
+                            onChange={(e) => setNewClientName(e.target.value)}
+                            placeholder="e.g. Acme Realty"
+                            className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-teal-accent/50"
+                            autoFocus
+                        />
+                    </div>
+                    <div className="flex justify-end gap-3 pt-2">
+                        <button
+                            onClick={() => setIsModalOpen(false)}
+                            className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            onClick={handleCreateClient}
+                            disabled={createClientMutation.isPending || !newClientName.trim()}
+                            className="px-6 py-2 bg-teal-accent text-white font-bold rounded-lg shadow-lg hover:bg-teal-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
+                        >
+                            {createClientMutation.isPending && <Loader2 className="animate-spin" size={16} />}
+                            Create Client
+                        </button>
+                    </div>
+                </div>
+            </Modal>
         </div>
     );
 }

@@ -1,6 +1,16 @@
-import { Settings, Server, Database, Activity, Save, ToggleLeft, ToggleRight } from "lucide-react";
+import { Settings, Server, Database, Activity, Save, ToggleRight, RefreshCw, Key, ShieldCheck } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 export function SettingsPage() {
+    const navigate = useNavigate();
+
+    const handleRestartOnboarding = () => {
+        if (confirm("Are you sure? This will restart the setup wizard.")) {
+            localStorage.removeItem("ghost_onboarding_complete");
+            navigate("/onboarding");
+        }
+    };
+
     return (
         <div className="space-y-8 animate-in fade-in duration-700">
             {/* Header */}
@@ -9,9 +19,17 @@ export function SettingsPage() {
                     <h2 className="text-4xl font-serif font-bold text-white tracking-tight mb-2">System Control</h2>
                     <p className="text-gray-400">Global configuration and system health status.</p>
                 </div>
-                <button className="flex items-center gap-2 bg-teal-accent hover:bg-teal-accent/90 text-white px-5 py-2.5 rounded-xl font-medium transition-all shadow-lg hover:shadow-teal-accent/25 hover:-translate-y-0.5">
-                    <Save size={18} /> Save Changes
-                </button>
+                <div className="flex gap-3">
+                    <button
+                        onClick={handleRestartOnboarding}
+                        className="flex items-center gap-2 bg-white/5 hover:bg-white/10 text-gray-300 px-5 py-2.5 rounded-xl font-medium transition-all"
+                    >
+                        <RefreshCw size={18} /> Restart Onboarding
+                    </button>
+                    <button className="flex items-center gap-2 bg-teal-accent hover:bg-teal-accent/90 text-white px-5 py-2.5 rounded-xl font-medium transition-all shadow-lg hover:shadow-teal-accent/25 hover:-translate-y-0.5">
+                        <Save size={18} /> Save Changes
+                    </button>
+                </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -43,6 +61,21 @@ export function SettingsPage() {
                             <span className="text-xs px-2 py-1 bg-blue-500/20 text-blue-400 rounded border border-blue-500/20 uppercase font-bold tracking-wider">Processing</span>
                         </div>
                     </div>
+
+                    {/* API Keys (From Onboarding) */}
+                    <h3 className="text-lg font-bold text-white flex items-center gap-2 pt-4">
+                        <Key className="text-teal-accent" size={20} /> Credentials
+                    </h3>
+                    <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-6 space-y-4">
+                        <div>
+                            <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">OpenAI API Key</label>
+                            <input type="password" value="sk-pro-************************" disabled className="w-full bg-black/20 text-gray-400 text-sm p-3 rounded-lg border border-white/5" />
+                        </div>
+                        <div>
+                            <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Twilio SID</label>
+                            <input type="text" value="AC7b************************" disabled className="w-full bg-black/20 text-gray-400 text-sm p-3 rounded-lg border border-white/5" />
+                        </div>
+                    </div>
                 </div>
 
                 {/* Configuration */}
@@ -69,6 +102,14 @@ export function SettingsPage() {
                                 </div>
                                 <ToggleRight className="text-teal-accent w-10 h-10 cursor-pointer" />
                             </div>
+                            <div className="h-px bg-white/5"></div>
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h4 className="text-white font-medium flex items-center gap-2"><ShieldCheck size={16} className="text-teal-accent" /> Safety Limits</h4>
+                                    <p className="text-sm text-gray-400">Enforce 4 posts/day limit per bot account</p>
+                                </div>
+                                <ToggleRight className="text-teal-accent w-10 h-10 cursor-pointer" />
+                            </div>
                         </div>
 
                         {/* Templates */}
@@ -77,6 +118,16 @@ export function SettingsPage() {
                             <textarea
                                 className="w-full h-32 bg-black/20 border border-white/10 rounded-xl p-4 text-gray-200 text-sm focus:outline-none focus:border-teal-accent/50 transition-colors"
                                 defaultValue="Hi there! I saw you're looking for help with {service}. We specialize in that and have availability this week. Give us a call at {phone}."
+                            />
+                        </div>
+
+                        {/* Proxy Config */}
+                        <div className="space-y-4">
+                            <h4 className="text-xs uppercase text-gray-500 tracking-wider font-bold">Proxy Configuration</h4>
+                            <input
+                                type="text"
+                                placeholder="http://user:pass@host:port"
+                                className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-teal-accent/50"
                             />
                         </div>
                     </div>

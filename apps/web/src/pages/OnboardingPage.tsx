@@ -36,6 +36,7 @@ export function OnboardingPage() {
         } else {
             // Save data (mock)
             console.log("Saving onboarding data:", formData);
+            localStorage.setItem("ghost_onboarding_complete", "true");
             navigate("/");
         }
     };

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { LeadsPage } from "./pages/LeadsPage";
 import { ClientsPage } from "./pages/ClientsPage";
@@ -41,6 +41,16 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
     }
 }
 
+function RequireOnboarding({ children }: { children: JSX.Element }) {
+    const isOnboarded = localStorage.getItem("ghost_onboarding_complete") === "true";
+
+    if (!isOnboarded) {
+        return <Navigate to="/onboarding" replace />;
+    }
+
+    return children;
+}
+
 const queryClient = new QueryClient();
 
 function App() {
@@ -53,7 +63,7 @@ function App() {
                         <Route path="/onboarding" element={<OnboardingPage />} />
 
                         {/* Main App Routes */}
-                        <Route element={<Layout />}>
+                        <Route element={<RequireOnboarding><Layout /></RequireOnboarding>}>
                             <Route path="/" element={<LeadsPage />} />
                             <Route path="/clients" element={<ClientsPage />} />
                             <Route path="/sources" element={<SourcesPage />} />
