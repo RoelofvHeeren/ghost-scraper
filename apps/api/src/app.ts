@@ -15,7 +15,10 @@ export async function buildApp() {
     app.setValidatorCompiler(validatorCompiler);
     app.setSerializerCompiler(serializerCompiler);
 
-    await app.register(cors);
+    await app.register(cors, {
+        origin: true, // Allow all origins (simpler for now) or specify ["https://web-production-a3b7e.up.railway.app"]
+        methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    });
 
     await app.register(fastifySwagger, {
         openapi: {

@@ -17,7 +17,7 @@ function scoreCandidate(text: string, include: string[], exclude: string[]) {
 
     // 2. Inclusion
     for (const inc of include) {
-        if (lower.includes(inc.toLowerCase())) {
+        if (lower.includes(inc.toLowerCase()) || lower.includes(inc.toLowerCase().slice(0, -1))) { // Simple fuzzy match (e.g. landscaping -> landscap)
             score += 20;
             reasons.push(`keyword:${inc}`);
         }
