@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Check, ChevronRight, Sparkles, Key, Globe, ShieldCheck, MessageSquare } from "lucide-react";
+import { Check, ChevronRight, Sparkles, Key, Globe, ShieldCheck, MessageSquare, Briefcase, Users, Plus, Clock, Trash2 } from "lucide-react";
 
 const steps = [
     { id: 1, title: "API Configuration", icon: Key },
@@ -23,11 +23,35 @@ export function OnboardingPage() {
         proxyUrl: "",
         safetyEnabled: true,
         campaignName: "Default Outreach",
-        firstMessage: "Hi there, I noticed you're looking for help. We have availability this week!",
+        persona: "BUSINESS",
+        steps: [
+            { id: "1", delayMinutes: 2, content: "Hi! I noticed you were looking for help with {service}. I might be able to assist." }
+        ]
     });
 
     const updateForm = (key: string, value: any) => {
         setFormData(prev => ({ ...prev, [key]: value }));
+    };
+
+    const addStep = () => {
+        setFormData(prev => ({
+            ...prev,
+            steps: [...prev.steps, { id: Date.now().toString(), delayMinutes: 15, content: "" }]
+        }));
+    };
+
+    const updateStep = (id: string, field: string, value: any) => {
+        setFormData(prev => ({
+            ...prev,
+            steps: prev.steps.map(s => s.id === id ? { ...s, [field]: value } : s)
+        }));
+    };
+
+    const removeStep = (id: string) => {
+        setFormData(prev => ({
+            ...prev,
+            steps: prev.steps.filter(s => s.id !== id)
+        }));
     };
 
     const handleNext = () => {
@@ -48,7 +72,7 @@ export function OnboardingPage() {
                 <source src="/background.mp4" type="video/mp4" />
             </video>
 
-            <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-8 rounded-3xl shadow-luxury max-w-2xl w-full mx-4 relative z-10">
+            <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-8 rounded-3xl shadow-luxury max-w-2xl w-full mx-4 relative z-10 max-h-[90vh] overflow-y-auto">
                 {/* Header */}
                 <div className="text-center mb-10">
                     <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-black border border-white/10 shadow-sharp mb-4">
@@ -167,10 +191,29 @@ export function OnboardingPage() {
                     )}
 
                     {currentStep === 4 && (
-                        <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
-                            <h2 className="text-xl font-bold text-white">First Campaign</h2>
-                            <p className="text-sm text-gray-400 mb-4">Setup your initial outreach message flow.</p>
-                            <div className="space-y-3">
+                        <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                            <div className="flex justify-between items-start">
+                                <div>
+                                    <h2 className="text-xl font-bold text-white">First Campaign</h2>
+                                    <p className="text-sm text-gray-400">Design your initial outreach flow.</p>
+                                </div>
+                                <div className="flex bg-black/40 rounded-lg p-1">
+                                    <button
+                                        onClick={() => updateForm('persona', 'BUSINESS')}
+                                        className={`px-3 py-1 rounded text-xs font-bold transition-all ${formData.persona === 'BUSINESS' ? 'bg-teal-500 text-white shadow-lg' : 'text-gray-500'}`}
+                                    >
+                                        Business
+                                    </button>
+                                    <button
+                                        onClick={() => updateForm('persona', 'COMMUNITY')}
+                                        className={`px-3 py-1 rounded text-xs font-bold transition-all ${formData.persona === 'COMMUNITY' ? 'bg-purple-500 text-white shadow-lg' : 'text-gray-500'}`}
+                                    >
+                                        Community
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
                                 <div>
                                     <label className="text-xs text-gray-400 uppercase tracking-wider block mb-1">Campaign Name</label>
                                     <input
@@ -180,14 +223,44 @@ export function OnboardingPage() {
                                         className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-teal-accent/50"
                                     />
                                 </div>
-                                <div>
-                                    <label className="text-xs text-gray-400 uppercase tracking-wider block mb-1">Initial Reply Template</label>
-                                    <textarea
-                                        value={formData.firstMessage}
-                                        onChange={(e) => updateForm('firstMessage', e.target.value)}
-                                        className="w-full h-32 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-teal-accent/50 resize-none"
-                                    />
-                                    <p className="text-xs text-gray-500 mt-2">Available variables: {'{firstName}'}, {'{service}'}</p>
+
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-center border-b border-white/10 pb-2">
+                                        <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Sequence Steps</label>
+                                        <button onClick={addStep} className="text-xs flex items-center gap-1 text-teal-accent hover:text-teal-300 transition-colors">
+                                            <Plus size={14} /> Add Step
+                                        </button>
+                                    </div>
+
+                                    {formData.steps.map((step, idx) => (
+                                        <div key={step.id} className="bg-black/20 p-4 rounded-xl border border-white/5 relative group">
+                                            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button onClick={() => removeStep(step.id)} className="p-1 text-gray-500 hover:text-red-400">
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </div>
+                                            <div className="flex items-center gap-3 mb-3">
+                                                <span className="bg-white/10 w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono text-gray-400">{idx + 1}</span>
+                                                <div className="flex items-center gap-2">
+                                                    <Clock size={14} className="text-gray-500" />
+                                                    <span className="text-xs text-gray-400">Wait</span>
+                                                    <input
+                                                        type="number"
+                                                        value={step.delayMinutes}
+                                                        onChange={(e) => updateStep(step.id, 'delayMinutes', parseInt(e.target.value) || 0)}
+                                                        className="w-16 bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-white text-center focus:border-teal-accent"
+                                                    />
+                                                    <span className="text-xs text-gray-400">minutes</span>
+                                                </div>
+                                            </div>
+                                            <textarea
+                                                value={step.content}
+                                                onChange={(e) => updateStep(step.id, 'content', e.target.value)}
+                                                placeholder="Type your message here..."
+                                                className="w-full bg-black/40 border border-white/10 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-teal-accent/50 min-h-[80px]"
+                                            />
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
                         </div>
