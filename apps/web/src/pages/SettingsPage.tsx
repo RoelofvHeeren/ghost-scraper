@@ -57,7 +57,7 @@ export function SettingsPage() {
                             <div className="flex items-center justify-between">
                                 <div>
                                     <h4 className="text-white font-medium">Auto-Response Mode</h4>
-                                    <p className="text-sm text-gray-400">Automatically reply to high-scoring leads (>40)</p>
+                                    <p className="text-sm text-gray-400">Automatically reply to high-scoring leads (&gt;40)</p>
                                 </div>
                                 <ToggleRight className="text-teal-accent w-10 h-10 cursor-pointer" />
                             </div>
