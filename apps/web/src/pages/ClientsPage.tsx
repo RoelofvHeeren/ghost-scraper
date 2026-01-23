@@ -7,11 +7,17 @@ export function ClientsPage() {
 
     const { data: clients, isLoading } = useQuery({
         queryKey: ["clients"],
-        queryFn: () => axios.get("/api/admin/clients").then((res) => res.data),
+        queryFn: () => {
+            const baseUrl = import.meta.env.VITE_API_URL || "";
+            return axios.get(`${baseUrl}/admin/clients`).then((res) => res.data);
+        },
     });
 
     const createClientMutation = useMutation({
-        mutationFn: (newClient: { name: string }) => axios.post("/api/admin/clients", newClient),
+        mutationFn: (newClient: { name: string }) => {
+            const baseUrl = import.meta.env.VITE_API_URL || "";
+            return axios.post(`${baseUrl}/admin/clients`, newClient);
+        },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["clients"] });
         },

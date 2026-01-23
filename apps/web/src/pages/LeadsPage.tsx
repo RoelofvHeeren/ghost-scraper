@@ -22,7 +22,10 @@ type Lead = {
 export function LeadsPage() {
     const { data, isLoading, error } = useQuery<{ data: Lead[] }>({
         queryKey: ["leads"],
-        queryFn: () => axios.get("/api/leads").then((res) => res.data),
+        queryFn: () => {
+            const baseUrl = import.meta.env.VITE_API_URL || "";
+            return axios.get(`${baseUrl}/leads`).then((res) => res.data);
+        },
         refetchInterval: 15000,
     });
 
@@ -48,7 +51,7 @@ export function LeadsPage() {
             </div>
 
             <div className="grid gap-4">
-                {data?.data.map((lead) => (
+                {data?.data?.map((lead) => (
                     <div
                         key={lead.id}
                         className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:border-indigo-300 transition-colors"
