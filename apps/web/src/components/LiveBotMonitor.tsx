@@ -8,6 +8,8 @@ interface LiveBotMonitorProps {
     isProcessing: boolean;
     isManualMode: boolean;
     onRemoteClick?: (x: number, y: number) => void;
+    onRemoteScroll?: (deltaY: number) => void;
+    onRemoteType?: (key: string) => void;
     onToggleManual?: (paused: boolean) => void;
 }
 
@@ -18,11 +20,14 @@ export function LiveBotMonitor({
     isProcessing,
     isManualMode,
     onRemoteClick,
+    onRemoteScroll,
+    onRemoteType,
     onToggleManual
 }: LiveBotMonitorProps) {
     const logEndRef = useRef<HTMLDivElement>(null);
     const [isExpanded, setIsExpanded] = useState(false);
     const imgRef = useRef<HTMLImageElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -30,6 +35,9 @@ export function LiveBotMonitor({
 
     const handleImageClick = (e: React.MouseEvent<HTMLImageElement>) => {
         if (!imgRef.current || !onRemoteClick) return;
+
+        // Auto-focus container to capture keys
+        containerRef.current?.focus();
 
         const rect = imgRef.current.getBoundingClientRect();
         const containerWidth = rect.width;
@@ -70,6 +78,21 @@ export function LiveBotMonitor({
         onRemoteClick(Math.round(clickX * scaleX), Math.round(clickY * scaleY));
     };
 
+    const handleWheel = (e: React.WheelEvent) => {
+        if (!isManualMode || !onRemoteScroll) return;
+        onRemoteScroll(Math.round(e.deltaY));
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (!isManualMode || !onRemoteType) return;
+
+        // Prevent default browser actions (like scrolling with space) while typing to bot
+        if ([' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Backspace', 'Tab', 'Enter'].includes(e.key)) {
+            e.preventDefault();
+        }
+        onRemoteType(e.key);
+    };
+
     if (!isProcessing && logs.length === 0) return null;
 
     return (
@@ -83,11 +106,16 @@ export function LiveBotMonitor({
                         {isManualMode && <span className="text-[10px] text-orange-500 font-mono tracking-widest px-2 py-0.5 bg-orange-500/10 rounded uppercase">Automation Paused</span>}
                     </h3>
                     <div className="flex items-center gap-2">
+                        {isManualMode && (
+                            <span className="text-[10px] text-zinc-500 animate-pulse border border-zinc-800 px-2 py-1 rounded hidden sm:inline">
+                                Scroll & Type Enabled
+                            </span>
+                        )}
                         <button
                             onClick={() => onToggleManual?.(!isManualMode)}
                             className={`p-1 px-3 rounded text-[10px] font-bold border transition-all ${isManualMode
-                                    ? 'bg-orange-500 border-orange-400 text-white shadow-[0_0_15px_rgba(249,115,22,0.4)]'
-                                    : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white hover:bg-zinc-700'
+                                ? 'bg-orange-500 border-orange-400 text-white shadow-[0_0_15px_rgba(249,115,22,0.4)]'
+                                : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white hover:bg-zinc-700'
                                 }`}
                         >
                             {isManualMode ? 'RESUME AUTOMATION' : 'PAUSE AUTOMATION'}
@@ -101,8 +129,13 @@ export function LiveBotMonitor({
                     </div>
                 </div>
 
-                <div className={`bg-zinc-950 rounded-xl border-2 transition-all duration-300 relative overflow-hidden shadow-2xl ${isManualMode ? 'border-orange-500/50 shadow-orange-500/10' : 'border-zinc-800 shadow-black'
-                    } ${isExpanded ? 'aspect-[16/10] max-h-[85vh]' : 'aspect-video'}`}>
+                <div
+                    ref={containerRef}
+                    tabIndex={0}
+                    onKeyDown={handleKeyDown}
+                    onWheel={handleWheel}
+                    className={`bg-zinc-950 rounded-xl border-2 transition-all duration-300 relative overflow-hidden shadow-2xl outline-none ${isManualMode ? 'border-orange-500/50 shadow-orange-500/10 focus:border-orange-400' : 'border-zinc-800 shadow-black'
+                        } ${isExpanded ? 'aspect-[16/10] max-h-[85vh]' : 'aspect-video'}`}>
                     {screenshot ? (
                         <div className="relative group cursor-crosshair h-full w-full">
                             <img

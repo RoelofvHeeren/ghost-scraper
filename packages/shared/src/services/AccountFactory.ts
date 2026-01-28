@@ -62,6 +62,13 @@ export class AccountFactory {
         }
     }
 
+    private async waitWhilePaused() {
+        while (this.isManualControl) {
+            await new Promise(r => setTimeout(r, 1000));
+            await this.capture(this.page);
+        }
+    }
+
     public toggleManual() {
         this.isManualControl = !this.isManualControl;
         this.log(this.isManualControl ? '⏸️ Automation Paused (Manual Override)' : '▶️ Automation Resumed');
@@ -147,6 +154,25 @@ export class AccountFactory {
         }
     }
 
+    public async handleRemoteScroll(deltaY: number) {
+        if (this.page) {
+            await this.page.evaluate((dy: number) => {
+                window.scrollBy(0, dy);
+            }, deltaY);
+            await this.capture(this.page);
+        }
+    }
+
+    public async handleRemoteKey(key: string) {
+        if (this.page) {
+            if (key === 'Backspace') await this.page.keyboard.press('Backspace');
+            else if (key === 'Enter') await this.page.keyboard.press('Enter');
+            else if (key === 'Tab') await this.page.keyboard.press('Tab');
+            else if (key.length === 1) await this.page.keyboard.type(key);
+            await this.capture(this.page);
+        }
+    }
+
     private async findLearnedSelector(stepName: string) {
         try {
             return await (prisma as any).learnedSelector.findFirst({
@@ -178,6 +204,7 @@ export class AccountFactory {
 
                 if (selector) {
                     await this.page.waitForSelector(selector, { timeout: 3000 });
+                    await this.waitWhilePaused();
                     await this.page.evaluate((s: string) => {
                         const el = document.querySelector(s);
                         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -241,7 +268,7 @@ export class AccountFactory {
         await context.overridePermissions('https://nextdoor.com', ['geolocation']);
 
         this.page = await this.browser.newPage();
-        await this.page.setViewport({ width: 1280, height: 1200 }); // Larger viewport to see all buttons
+        await this.page.setViewport({ width: 1280, height: 2000 }); // Even larger viewport to see everything
         await this.page.authenticate({ username: proxyUrl.username, password: proxyUrl.password });
 
         // GPS Spoofing & Timezone Hardening
@@ -270,7 +297,11 @@ export class AccountFactory {
             // Step 1: Email & Password
             this.progress('Entering Credentials');
             await this.page.waitForSelector('input[aria-label="Email address"]', { timeout: 15000 });
+
+            await this.waitWhilePaused();
             await this.page.type('input[aria-label="Email address"]', email, { delay: 50 });
+
+            await this.waitWhilePaused();
             await this.page.type('input[aria-label="Create a password"]', password, { delay: 50 });
             await this.capture(this.page);
 
@@ -342,6 +373,8 @@ export class AccountFactory {
 
             // Wait for street address input via aria-label
             await this.page.waitForSelector('input[aria-label="Street address"]');
+
+            await this.waitWhilePaused();
             await this.page.type('input[aria-label="Street address"]', address, { delay: 50 });
             await this.capture(this.page);
 
@@ -556,6 +589,7 @@ export class AccountFactory {
                 return buttons.some(b => (b as HTMLElement).innerText.toLowerCase().includes(t.toLowerCase()));
             }, { timeout }, text);
 
+            await this.waitWhilePaused();
             await this.page.evaluate((t: string) => {
                 const buttons = Array.from(document.querySelectorAll('button'));
                 const btn = buttons.find(b => (b as HTMLElement).innerText.toLowerCase().includes(t.toLowerCase()));

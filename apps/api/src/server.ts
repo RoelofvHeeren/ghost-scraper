@@ -34,6 +34,18 @@ async function main() {
                     await factory.handleRemoteClick(x, y);
                 }
             });
+            socket.on("remote_scroll", async ({ sessionId, deltaY }) => {
+                const factory = AccountFactory.getInstance(sessionId);
+                if (factory) {
+                    await factory.handleRemoteScroll(deltaY);
+                }
+            });
+            socket.on("remote_type", async ({ sessionId, key }) => {
+                const factory = AccountFactory.getInstance(sessionId);
+                if (factory) {
+                    await factory.handleRemoteKey(key);
+                }
+            });
             socket.on("toggle_manual", async ({ sessionId }) => {
                 const factory = AccountFactory.getInstance(sessionId);
                 if (factory) {

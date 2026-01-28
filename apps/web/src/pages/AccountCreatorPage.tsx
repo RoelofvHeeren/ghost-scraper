@@ -283,6 +283,16 @@ export function AccountCreatorPage() {
                         isProcessing={createMutation.isPending}
                         isManualMode={isManualMode}
                         onToggleManual={onToggleManual}
+                        onRemoteScroll={(deltaY) => {
+                            if (socket && sessionId) {
+                                socket.emit('remote_scroll', { sessionId, deltaY });
+                            }
+                        }}
+                        onRemoteType={(key) => {
+                            if (socket && sessionId) {
+                                socket.emit('remote_type', { sessionId, key });
+                            }
+                        }}
                         onRemoteClick={(x, y) => {
                             if (socket && sessionId) {
                                 socket.emit('remote_click', { sessionId, x, y });
