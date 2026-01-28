@@ -1,6 +1,7 @@
 import { Job } from "bullmq";
 import { db } from "../lib/db.js";
 import { NextdoorScraper } from "@ghost-scraper/shared";
+import { processQueue } from "../lib/queues.js";
 
 /**
  * Poll job - now processes ALL sources assigned to a bot in a single session
@@ -76,15 +77,20 @@ export async function pollBotJob(job: Job) {
 
                     for (const post of posts) {
                         const dedupHash = `${post.externalId}-${source.id}`;
-                        await db.leadCandidate.upsert({
-                            where: { dedupHash },
-                            create: {
+
+                        // Check if exists first to avoid redundant processing jobs
+                        const existing = await db.leadCandidate.findUnique({ where: { dedupHash } });
+                        if (existing) continue;
+
+                        const candidate = await db.leadCandidate.create({
+                            data: {
                                 ...post,
                                 sourceId: source.id,
                                 dedupHash
-                            },
-                            update: {}
+                            }
                         });
+
+                        await processQueue.add("process-candidate", { candidateId: candidate.id });
                     }
                 } catch (sourceError) {
                     console.error(`❌ Source Error (${source.name}):`, sourceError);
