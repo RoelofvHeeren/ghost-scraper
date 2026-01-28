@@ -6,7 +6,12 @@ import { PrismaClient } from '@prisma/client';
 import { TextVerifiedService } from './TextVerifiedService.js';
 
 puppeteer.use(StealthPlugin());
-const prisma = new PrismaClient(); // Should reuse global instance in real app
+let prismaInstance: PrismaClient | null = null;
+function getPrisma() {
+    if (!prismaInstance) prismaInstance = new PrismaClient();
+    return prismaInstance;
+}
+console.log('[BACKEND] AccountFactory module loaded');
 
 interface AccountRequest {
     proxy: string;
@@ -118,7 +123,7 @@ export class AccountFactory {
                             const target = this.currentStepName.includes('Entering') ? 'Continue' :
                                 this.currentStepName.includes('Address') ? 'Continue' : 'Default';
 
-                            await (prisma as any).learnedSelector.upsert({
+                            await (getPrisma() as any).learnedSelector.upsert({
                                 where: {
                                     platform_stepName_selector: {
                                         platform: 'NEXTDOOR',
@@ -175,7 +180,7 @@ export class AccountFactory {
 
     private async findLearnedSelector(stepName: string) {
         try {
-            return await (prisma as any).learnedSelector.findFirst({
+            return await (getPrisma() as any).learnedSelector.findFirst({
                 where: {
                     platform: 'NEXTDOOR',
                     stepName: stepName
@@ -229,6 +234,8 @@ export class AccountFactory {
 
     async createBot(req: AccountRequest & { sessionId?: string }, options?: CreateOptions) {
         this.options = options;
+        this.log(`🚀 [BACKEND] createBot started for session: ${req.sessionId}`);
+
         if (req.sessionId) {
             AccountFactory.instances.set(req.sessionId, this);
         }
@@ -551,7 +558,7 @@ export class AccountFactory {
             await this.capture(this.page);
 
             // Save to DB
-            await prisma.botAccount.create({
+            await getPrisma().botAccount.create({
                 data: {
                     platform: 'NEXTDOOR',
                     username: email,
