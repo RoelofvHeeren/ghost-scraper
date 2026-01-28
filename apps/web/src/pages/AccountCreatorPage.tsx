@@ -6,11 +6,11 @@ import { MapPin, Globe, User, Radio, Play, AlertCircle } from 'lucide-react';
 
 export function AccountCreatorPage() {
     const [formData, setFormData] = useState({
-        baseEmail: 'roelof818@gmail.com',
-        proxy: '',
-        address: '9012 Grand Bayou Ct, Tampa, FL 33635',
-        lat: 28.0360,
-        lng: -82.6060,
+        baseEmail: 'nextdoorneighbor01@gmail.com',
+        proxy: 'http://juvgugun-US:m1c1h51kdgjm@192.53.67.129:5678',
+        address: '4598 Nautilus Dr Miami Beach, FL 33140',
+        lat: 25.8123,
+        lng: -80.1341,
         firstName: '',
         lastName: '',
         password: ''
