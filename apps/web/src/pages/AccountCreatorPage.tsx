@@ -16,12 +16,39 @@ export function AccountCreatorPage() {
         password: ''
     });
 
+    const [isGeocoding, setIsGeocoding] = useState(false);
+
     const createMutation = useMutation({
         mutationFn: async (data: typeof formData) => {
             const res = await api.post('/bots/factory', data);
             return res.data;
         }
     });
+
+    const handleGeocode = async () => {
+        if (!formData.address) return;
+
+        setIsGeocoding(true);
+        try {
+            console.log(`🌍 Geocoding: ${formData.address}`);
+            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(formData.address)}`);
+            const data = await res.json();
+
+            if (data && data[0]) {
+                const { lat, lon } = data[0];
+                console.log(`📍 Found: ${lat}, ${lon}`);
+                setFormData(prev => ({
+                    ...prev,
+                    lat: parseFloat(lat),
+                    lng: parseFloat(lon)
+                }));
+            }
+        } catch (e) {
+            console.error("Geocode failed", e);
+        } finally {
+            setIsGeocoding(false);
+        }
+    };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -118,11 +145,15 @@ export function AccountCreatorPage() {
                     </div>
 
                     <div className="space-y-2">
-                        <label className="text-sm text-zinc-400">Target Address (Exact Google Maps String)</label>
+                        <label className="text-sm text-zinc-400 flex justify-between">
+                            <span>Target Address (Exact Google Maps String)</span>
+                            {isGeocoding && <span className="text-yellow-400 animate-pulse text-xs">Fetching GPS...</span>}
+                        </label>
                         <input
                             type="text"
                             value={formData.address}
                             onChange={e => setFormData({ ...formData, address: e.target.value })}
+                            onBlur={handleGeocode}
                             className="w-full bg-black/50 border border-zinc-700 rounded p-2 focus:ring-2 focus:ring-green-500/50 outline-none"
                         />
                     </div>
