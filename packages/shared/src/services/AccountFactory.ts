@@ -231,16 +231,26 @@ export class AccountFactory {
         this.page = await this.browser.newPage();
         await this.page.authenticate({ username: proxyUrl.username, password: proxyUrl.password });
 
-        // GPS Spoofing to match address (Mitigate Webshare IP mismatch)
+        // GPS Spoofing & Timezone Hardening
         if (req.latitude && req.longitude) {
             await this.page.setGeolocation({ latitude: req.latitude, longitude: req.longitude });
-            this.log(`📍 GPS Spoofed: ${req.latitude}, ${req.longitude}`);
+            // Default to East Coast/Tampa if not specialized
+            await this.page.emulateTimezone('America/New_York').catch(() => { });
+            this.log(`📍 GPS & Timezone Spoofed: ${req.latitude}, ${req.longitude} (America/New_York)`);
         }
+
+        // WebRTC Blocking (Prevent IP leakage)
+        await this.page.evaluateOnNewDocument(() => {
+            // @ts-ignore
+            delete window.navigator.rtcPeerConnection;
+            // @ts-ignore
+            delete window.navigator.rtcIceGatherer;
+        });
 
         try {
             // 4. Signup Flow
             this.progress('Navigating to Signup');
-            // Changed from /signup/ (404) to /create-account/
+            await this.humanDelay(1000, 3000);
             await this.page.goto('https://nextdoor.com/create-account/', { waitUntil: 'networkidle2' });
             await this.capture(this.page);
 
@@ -489,6 +499,11 @@ export class AccountFactory {
             this.log(`⚠️ Button "${text}" not found within timeout.`);
             throw e;
         }
+    }
+
+    private async humanDelay(min = 500, max = 2000) {
+        const delay = Math.floor(Math.random() * (max - min + 1) + min);
+        await new Promise(r => setTimeout(r, delay));
     }
 
     private getRandom(arr: string[]) {
