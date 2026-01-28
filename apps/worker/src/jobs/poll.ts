@@ -1,10 +1,9 @@
 import { Job } from "bullmq";
 import { db } from "../lib/db.js";
-import { NextdoorConnector } from "../connectors/nextdoor.js";
+import { NextdoorScraper } from "@ghost-scraper/shared";
 
 /**
  * Poll job - now processes ALL sources assigned to a bot in a single session
- * This is more efficient than opening/closing browser for each source
  */
 export async function pollBotJob(job: Job) {
     const { botId } = job.data;
@@ -30,18 +29,19 @@ export async function pollBotJob(job: Job) {
     }
 
     if (bot.platform === "NEXTDOOR") {
-        const connector = new NextdoorConnector();
+        const scraper = new NextdoorScraper();
 
         try {
-            // Initialize browser once with bot's proxy and session
-            await connector.init({
+            // Initialize once with bot's details
+            await scraper.init({
                 sessionData: bot.sessionData,
                 proxyUrl: bot.proxyUrl || undefined
             });
 
             // Login once
-            const isLoggedIn = await connector.login(bot.username, bot.password || "");
+            const isLoggedIn = await scraper.login(bot.username, bot.password || "");
             if (!isLoggedIn) {
+                console.log(`Bot ${bot.username} login failed`);
                 await db.botAccount.update({
                     where: { id: bot.id },
                     data: { status: "NEEDS_REVIEW", loginErrorCount: { increment: 1 } } as any
@@ -50,32 +50,30 @@ export async function pollBotJob(job: Job) {
             }
 
             // Save session after successful login
-            const newSession = await connector.getSessionData();
+            const newCookies = await scraper.getCookies();
             await db.botAccount.update({
                 where: { id: bot.id },
-                data: { sessionData: newSession, lastLoginAt: new Date() }
+                data: {
+                    sessionData: { cookies: newCookies } as any,
+                    lastLoginAt: new Date()
+                }
             });
 
-            // Process each assigned source in sequence
+            // Process each assigned source
             let totalScraped = 0;
             for (const assignment of bot.assignedSources) {
                 const source = assignment.source;
+                if (!source.enabled) continue;
 
-                if (!source.enabled) {
-                    console.log(`Source ${source.id} is disabled, skipping`);
-                    continue;
-                }
-
-                console.log(`Bot ${bot.username} scraping source: ${source.name}`);
+                console.log(`🤖 Bot ${bot.username} scraping: ${source.name}`);
 
                 try {
-                    const posts = await connector.getFeed();
-                    console.log(`Scraped ${posts.length} posts from ${source.name}`);
+                    const posts = await scraper.scrapeSource(source.config);
+                    console.log(`✅ Scraped ${posts.length} posts from ${source.name}`);
                     totalScraped += posts.length;
 
                     for (const post of posts) {
                         const dedupHash = `${post.externalId}-${source.id}`;
-
                         await db.leadCandidate.upsert({
                             where: { dedupHash },
                             create: {
@@ -83,16 +81,11 @@ export async function pollBotJob(job: Job) {
                                 sourceId: source.id,
                                 dedupHash
                             },
-                            update: {} // Skip if already exists
+                            update: {}
                         });
                     }
-
-                    // Small delay between sources to avoid rate limiting
-                    await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 1000));
-
                 } catch (sourceError) {
-                    console.error(`Error scraping source ${source.name}:`, sourceError);
-                    // Continue to next source even if one fails
+                    console.error(`❌ Source Error (${source.name}):`, sourceError);
                 }
             }
 
@@ -102,16 +95,12 @@ export async function pollBotJob(job: Job) {
                 data: { dailyScrapeCount: { increment: totalScraped } }
             });
 
-            console.log(`Bot ${bot.username} completed scraping ${bot.assignedSources.length} sources, total posts: ${totalScraped}`);
+            console.log(`🏁 Bot ${bot.username} finished. Total posts: ${totalScraped}`);
 
         } catch (error) {
-            console.error(`Poll job failed for bot ${botId}:`, error);
-            await db.botAccount.update({
-                where: { id: bot.id },
-                data: { status: "NEEDS_REVIEW" } as any
-            });
+            console.error(`💥 Bot Job Failed (${botId}):`, error);
         } finally {
-            await connector.close();
+            await scraper.close();
         }
     }
 }

@@ -1,5 +1,7 @@
+
 import { Job } from "bullmq";
 import { db } from "../lib/db.js";
+import { qualifyCandidate, SERVICE_PROFILES } from "@ghost-scraper/shared";
 
 export async function processCandidateJob(job: Job) {
     const { candidateId } = job.data;
@@ -9,28 +11,20 @@ export async function processCandidateJob(job: Job) {
         include: { source: true }
     });
 
-    if (!candidate) {
-        throw new Error(`Candidate ${candidateId} not found`);
-    }
+    if (!candidate) return;
 
-    // scoring logic
-    const body = candidate.body.toLowerCase();
-    const config = candidate.source.config as any;
-    const keywords = config.keywords || [];
+    // Determine profile
+    const sourceConfig = (candidate.source.config as any) || {};
+    const profile = sourceConfig.profile === 'TRIMEN' ? SERVICE_PROFILES.TRIMEN : {
+        include: sourceConfig.keywords || [],
+        exclude: sourceConfig.exclude || [],
+        threshold: sourceConfig.threshold || 20
+    };
 
-    let score = 0;
-    const matchedKeywords: string[] = [];
+    const result = qualifyCandidate(candidate.body, profile);
 
-    for (const kw of keywords) {
-        if (body.includes(kw.toLowerCase())) {
-            score += 20;
-            matchedKeywords.push(kw);
-        }
-    }
-
-    // If score meets threshold, create a lead
-    if (score >= 20) {
-        console.log(`Candidate ${candidateId} qualified with score ${score}. Matched: ${matchedKeywords.join(", ")}`);
+    if (result.isQualified) {
+        console.log(`✅ Candidate ${candidateId} qualified. Score: ${result.score}`);
 
         // Find a client to assign if any
         const client = await db.client.findFirst();
@@ -39,14 +33,14 @@ export async function processCandidateJob(job: Job) {
             data: {
                 clientId: client?.id || "default",
                 candidateId: candidate.id,
-                score,
-                reasons: { matchedKeywords },
+                score: result.score,
+                reasons: result.reasons as any,
                 status: "NEW"
             }
         });
 
-        // Next: Trigger the start of a campaign reply sequence
+        // Success logic here (e.g., notify client or trigger auto-reply)
     } else {
-        console.log(`Candidate ${candidateId} did not qualify (score: ${score})`);
+        console.log(`ℹ️ Candidate ${candidateId} did not qualify (score: ${result.score})`);
     }
 }
