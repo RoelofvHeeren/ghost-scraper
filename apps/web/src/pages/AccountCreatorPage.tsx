@@ -272,6 +272,11 @@ export function AccountCreatorPage() {
                         screenshot={screenshot}
                         currentStep={currentStep}
                         isProcessing={createMutation.isPending}
+                        onRemoteClick={(x, y) => {
+                            if (socket && sessionId) {
+                                socket.emit('remote_click', { sessionId, x, y });
+                            }
+                        }}
                     />
                 </div>
             )}
