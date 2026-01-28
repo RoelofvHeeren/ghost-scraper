@@ -3,6 +3,7 @@ import { FastifyInstance } from "fastify";
 import { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { AccountFactory } from "@ghost-scraper/shared"; // Relative path to worker logic
+import { emitToSession } from "../lib/sockets.js";
 
 export async function botRoutes(app: FastifyInstance) {
     const server = app.withTypeProvider<ZodTypeProvider>();
@@ -56,7 +57,8 @@ export async function botRoutes(app: FastifyInstance) {
                 firstName: z.string().optional(),
                 lastName: z.string().optional(),
                 password: z.string().optional(),
-                textVerifiedApiKey: z.string().optional()
+                textVerifiedApiKey: z.string().optional(),
+                sessionId: z.string().optional() // Optional session ID for socket events
             })
         }
     }, async (req, reply) => {
@@ -80,6 +82,16 @@ export async function botRoutes(app: FastifyInstance) {
                 latitude: data.lat,
                 longitude: data.lng,
                 textVerifiedApiKey: apiKey
+            }, {
+                onProgress: (stage) => {
+                    if (data.sessionId) emitToSession(data.sessionId, 'step_update', stage);
+                },
+                onLog: (message) => {
+                    if (data.sessionId) emitToSession(data.sessionId, 'log', message);
+                },
+                onScreenshot: (base64) => {
+                    if (data.sessionId) emitToSession(data.sessionId, 'screenshot', base64);
+                }
             });
             return { status: "SUCCESS", message: "Bot created successfully" };
         } catch (e: any) {

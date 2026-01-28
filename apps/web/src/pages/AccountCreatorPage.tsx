@@ -1,8 +1,12 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { MapPin, Globe, User, Radio, Play, AlertCircle } from 'lucide-react';
+import { io, Socket } from 'socket.io-client';
+import { LiveBotMonitor } from '../components/LiveBotMonitor';
+
+const API_BASE_URL = (import.meta as any).env.VITE_API_URL || "http://localhost:8080";
 
 export function AccountCreatorPage() {
     const [formData, setFormData] = useState({
@@ -13,14 +17,47 @@ export function AccountCreatorPage() {
         lng: -80.1341,
         firstName: '',
         lastName: '',
-        password: ''
+        password: '',
+        textVerifiedApiKey: ''
     });
+
+    // Live Monitoring State
+    const [sessionId, setSessionId] = useState<string | null>(null);
+    const [logs, setLogs] = useState<string[]>([]);
+    const [screenshot, setScreenshot] = useState<string | null>(null);
+    const [currentStep, setCurrentStep] = useState<string>('');
+    const [socket, setSocket] = useState<Socket | null>(null);
+
+    useEffect(() => {
+        const s = io(API_BASE_URL);
+        setSocket(s);
+
+        s.on('connect', () => console.log('Connected to WebSocket server'));
+
+        s.on('step_update', (step: string) => setCurrentStep(step));
+        s.on('log', (msg: string) => setLogs(prev => [...prev.slice(-49), msg]));
+        s.on('screenshot', (b64: string) => setScreenshot(b64));
+
+        return () => {
+            s.disconnect();
+        };
+    }, []);
 
     const [isGeocoding, setIsGeocoding] = useState(false);
 
     const createMutation = useMutation({
         mutationFn: async (data: typeof formData) => {
-            const res = await api.post('/bots/factory', data);
+            const sid = Math.random().toString(36).substring(7);
+            setSessionId(sid);
+            setLogs(['🚀 Initializing factory session...']);
+            setCurrentStep('Initializing');
+            setScreenshot(null);
+
+            if (socket) {
+                socket.emit('join_bot_session', sid);
+            }
+
+            const res = await api.post('/bots/factory', { ...data, sessionId: sid });
             return res.data;
         }
     });
@@ -129,6 +166,16 @@ export function AccountCreatorPage() {
                                 className="w-full bg-black/50 border border-zinc-700 rounded p-2 focus:ring-2 focus:ring-green-500/50 outline-none"
                             />
                         </div>
+                        <div className="space-y-2">
+                            <label className="text-sm text-zinc-400">TextVerified API Key (Optional)</label>
+                            <input
+                                type="password"
+                                placeholder="Uses server env if empty"
+                                value={formData.textVerifiedApiKey}
+                                onChange={e => setFormData({ ...formData, textVerifiedApiKey: e.target.value })}
+                                className="w-full bg-black/50 border border-zinc-700 rounded p-2 focus:ring-2 focus:ring-green-500/50 outline-none"
+                            />
+                        </div>
                     </div>
                 </div>
 
@@ -207,12 +254,27 @@ export function AccountCreatorPage() {
 
                 {createMutation.isSuccess && (
                     <div className="p-4 bg-green-900/20 border border-green-500/30 rounded text-green-200 flex items-center gap-2">
-                        <Radio className="w-5 h-5 animate-pulse" />
-                        Bot Factory Started! Check the server logs/console for live progress.
+                        <Radio className="w-5 h-5" />
+                        Bot Factory Success!
                     </div>
                 )}
 
             </form>
+
+            {/* Live Monitoring Section */}
+            {(createMutation.isPending || logs.length > 0) && (
+                <div className="space-y-4">
+                    <div className="flex justify-between items-center px-2">
+                        <span className="text-[10px] text-zinc-500 font-mono uppercase tracking-widest">Session ID: {sessionId}</span>
+                    </div>
+                    <LiveBotMonitor
+                        logs={logs}
+                        screenshot={screenshot}
+                        currentStep={currentStep}
+                        isProcessing={createMutation.isPending}
+                    />
+                </div>
+            )}
         </div>
     );
 }

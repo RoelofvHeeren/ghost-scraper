@@ -20,14 +20,42 @@ interface AccountRequest {
     password?: string;
 }
 
+interface CreateOptions {
+    onProgress?: (stage: string) => void;
+    onLog?: (message: string) => void;
+    onScreenshot?: (base64: string) => void;
+}
+
 export class AccountFactory {
 
     // Random American Names for fallback
     private firstNames = ['James', 'Mary', 'John', 'Patricia', 'Robert', 'Jennifer', 'Michael', 'Linda', 'William', 'Elizabeth'];
     private lastNames = ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis', 'Rodriguez', 'Martinez'];
 
-    async createBot(req: AccountRequest) {
+    async createBot(req: AccountRequest, options?: CreateOptions) {
+        const log = (msg: string) => {
+            console.log(msg);
+            options?.onLog?.(msg);
+        };
+
+        const progress = (stage: string) => {
+            options?.onProgress?.(stage);
+            log(`➡️ Stage: ${stage}`);
+        };
+
+        const capture = async (page: any) => {
+            if (options?.onScreenshot) {
+                try {
+                    const b64 = await page.screenshot({ encoding: 'base64', type: 'jpeg', quality: 50 });
+                    options.onScreenshot(`data:image/jpeg;base64,${b64}`);
+                } catch (e) {
+                    // Ignore screenshot errors
+                }
+            }
+        };
+
         // 1. Generate Identity
+        progress('Generating Identity');
         const first = req.firstName || this.getRandom(this.firstNames);
         const last = req.lastName || this.getRandom(this.lastNames);
         const randomDigits = Math.floor(Math.random() * 900) + 100;
@@ -37,12 +65,13 @@ export class AccountFactory {
         const email = `${user}+${first.toLowerCase()}${randomDigits}@${domain}`;
         const password = req.password || `Pass${Math.random().toString(36).slice(-8)}!`;
 
-        console.log(`🏭 Starting Factory for: ${first} ${last} (${email})`);
+        log(`🏭 Starting Factory for: ${first} ${last} (${email})`);
 
         // 2. Prep API
         const smsService = new TextVerifiedService(req.textVerifiedApiKey);
 
         // 3. Launch with Proxy
+        progress('Launching Browser');
         const proxyUrl = new URL(req.proxy);
         const browser = await puppeteer.launch({
             headless: process.env.NODE_ENV !== 'development', // Default to headless unless strictly development
@@ -65,45 +94,50 @@ export class AccountFactory {
         // GPS Spoofing to match address (Mitigate Webshare IP mismatch)
         if (req.latitude && req.longitude) {
             await page.setGeolocation({ latitude: req.latitude, longitude: req.longitude });
-            console.log(`📍 GPS Spoofed: ${req.latitude}, ${req.longitude}`);
+            log(`📍 GPS Spoofed: ${req.latitude}, ${req.longitude}`);
         }
 
         try {
             // 4. Signup Flow
-            console.log('➡️ Navigating to Signup...');
+            progress('Navigating to Signup');
             // Changed from /signup/ (404) to /create-account/
             await page.goto('https://nextdoor.com/create-account/', { waitUntil: 'networkidle2' });
+            await capture(page);
 
             // Step 1: Email & Password
-            console.log('📧 Entering Credentials...');
+            progress('Entering Credentials');
+            await capture(page);
             await page.waitForSelector('input[aria-label="Email address"]');
             await page.type('input[aria-label="Email address"]', email, { delay: 50 });
             await page.type('input[aria-label="Create a password"]', password, { delay: 50 });
+            await capture(page);
 
             // Click "Continue"
             await this.clickButtonByText(page, 'Continue');
 
             // Step 2: Name (If present)
             try {
-                console.log('👤 Checking for Name fields...');
+                progress('Checking for Name Fields');
+                await capture(page);
                 // Short timeout as this step might be skipped
                 await page.waitForSelector('input[aria-label="First name"]', { timeout: 5000 });
                 await page.type('input[aria-label="First name"]', first, { delay: 50 });
                 await page.type('input[aria-label="Last name"]', last, { delay: 50 });
+                await capture(page);
                 await this.clickButtonByText(page, 'Continue');
             } catch (e) {
-                console.log('ℹ️ Name step skipped or not found (proceeding).');
+                log('ℹ️ Name step skipped or not found (proceeding).');
             }
 
             // Step 3: Address
-            console.log('🏠 Handling Address...');
+            progress('Handling Address');
             await page.waitForNavigation({ waitUntil: 'networkidle2' }).catch(() => { });
 
             // Handle "Type address instead" if Geolocation prompt appears
             try {
                 await this.clickButtonByText(page, 'Type address instead', 3000);
             } catch {
-                console.log('ℹ️ "Type address instead" button not found, assuming direct input.');
+                log('ℹ️ "Type address instead" button not found, assuming direct input.');
             }
 
             // Fill Address (Manually)
@@ -112,10 +146,11 @@ export class AccountFactory {
             // Wait for street address input via aria-label
             await page.waitForSelector('input[aria-label="Street address"]');
             await page.type('input[aria-label="Street address"]', address, { delay: 50 });
+            await capture(page);
 
             // Wait for dropdown suggestion
             const streetPart = address.split(',')[0]; // "9012 Grand Bayou Ct"
-            console.log(`Waiting for address suggestion matching: ${streetPart}`);
+            log(`Waiting for address suggestion matching: ${streetPart}`);
 
             await page.waitForFunction((text) => {
                 const els = Array.from(document.querySelectorAll('div[role="button"]'));
@@ -134,7 +169,9 @@ export class AccountFactory {
             await this.clickButtonByText(page, 'Continue');
 
             // Step 4: Hybrid Verification Check
-            console.log('🤔 Checking next step: Phone, GPS Verify, or Success...');
+            progress('Verifying Account');
+            log('🤔 Checking next step: Phone, GPS Verify, or Success...');
+            await capture(page);
 
             const verifySelector = 'input[aria-label="Mobile number"]';
             // Button often says "Verify with current address" or similar
@@ -176,10 +213,10 @@ export class AccountFactory {
             }
 
             if (verificationAction === 'SUCCESS') {
-                console.log('🎉 AMAZING! Auto-verified by address match.');
+                log('🎉 AMAZING! Auto-verified by address match.');
             }
             else if (verificationAction === 'GPS_BUTTON') {
-                console.log('📍 "Verify with current address" button found! Clicking it...');
+                log('📍 "Verify with current address" button found! Clicking it...');
                 // Click the button that contains "current address" or "verify location"
                 await page.evaluate(() => {
                     const buttons = Array.from(document.querySelectorAll('button'));
@@ -189,37 +226,40 @@ export class AccountFactory {
                     );
                     if (btn) (btn as HTMLElement).click();
                 });
-                console.log('🎉 Clicked Address Verification. Assuming success.');
+                log('🎉 Clicked Address Verification. Assuming success.');
             }
             else if (verificationAction === 'TIMEOUT') {
-                console.log('⚠️ Timeline expired. No obvious next step found. Checking one last time...');
+                log('⚠️ Timeline expired. No obvious next step found. Checking one last time...');
+                await capture(page);
             }
 
             // Only do SMS if explicitly PHONE
             if (verificationAction === 'PHONE') {
-                console.log('📱 Phone Verification required. Proceeding with TextVerified...');
+                log('📱 Phone Verification required. Proceeding with TextVerified...');
 
                 // A. Request Number
-                console.log('📡 Requesting SMS Number...');
+                progress('Requesting SMS Number');
+                log('📡 Requesting SMS Number...');
                 const verification = await smsService.createVerification();
-                console.log(`📡 Clean Number Acquired: ${verification.number}`);
+                log(`📡 Clean Number Acquired: ${verification.number}`);
 
                 // B. Input Number
                 await page.type('input[aria-label="Mobile number"]', verification.number, { delay: 50 });
                 await this.clickButtonByText(page, 'Text me a code');
 
                 // C. Poll for Code
-                console.log('⏳ Waiting for SMS Code...');
+                progress('Waiting for SMS Code');
+                log('⏳ Waiting for SMS Code...');
                 let code: string | undefined;
                 // Poll for 90 seconds
                 for (let i = 0; i < 30; i++) {
                     await new Promise(r => setTimeout(r, 3000));
                     const status = await smsService.getVerification(verification.id);
-                    console.log(`   Poll Status: ${status.state}`);
+                    log(`   Poll Status: ${status.state}`);
 
                     if (status.sms?.code) {
                         code = status.sms.code;
-                        console.log(`✅ Code Received: ${code}`);
+                        log(`✅ Code Received: ${code}`);
                         break;
                     }
 
@@ -231,13 +271,15 @@ export class AccountFactory {
                 if (!code) throw new Error("SMS Timeout (No code received)");
 
                 // D. Enter Code
-                console.log(`⌨️ Entering Code: ${code}`);
+                progress('Entering Verification Code');
+                log(`⌨️ Entering Code: ${code}`);
                 const codeInputSelector = 'input[aria-label="Verification code"], input[name="code"], input[autocomplete="one-time-code"]';
                 try {
                     await page.waitForSelector(codeInputSelector, { timeout: 10000 });
                     await page.type(codeInputSelector, code, { delay: 100 });
+                    await capture(page);
                 } catch {
-                    console.log('⚠️ Could not find specific code input, typing into first visible input.');
+                    log('⚠️ Could not find specific code input, typing into first visible input.');
                     await page.keyboard.type(code);
                 }
 
@@ -249,8 +291,10 @@ export class AccountFactory {
             }
 
             // 6. Success -> Export
+            progress('Finalizing Account');
             await new Promise(r => setTimeout(r, 3000)); // Wait for final settle
             const cookies = await page.cookies();
+            await capture(page);
 
             // Save to DB
             await prisma.botAccount.create({
@@ -267,10 +311,13 @@ export class AccountFactory {
                 }
             });
 
-            console.log(`✅ Bot Created: ${email}`);
+            progress('Success');
+            log(`✅ Bot Created: ${email}`);
 
         } catch (e) {
             console.error(`❌ Factory Failed: ${e}`);
+            log(`❌ Error: ${e}`);
+            await capture(page); // Final screenshot on fail
             throw e;
         } finally {
             await browser.close();
