@@ -260,7 +260,9 @@ export class AccountFactory {
                     email: email,
                     proxyUrl: req.proxy,
                     sessionData: cookies as any,
-                    status: 'ACTIVE'
+                    status: 'ACTIVE',
+                    latitude: req.latitude,
+                    longitude: req.longitude
                 }
             });
 

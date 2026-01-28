@@ -1,6 +1,7 @@
+
 import { Job } from "bullmq";
 import { db } from "../lib/db.js";
-import { NextdoorConnector } from "../connectors/nextdoor.js";
+import { NextdoorScraper } from "@ghost-scraper/shared";
 import { replyQueue } from "../lib/queues.js";
 
 export async function postReplyJob(job: Job) {
@@ -16,7 +17,7 @@ export async function postReplyJob(job: Job) {
                             assignedBots: {
                                 where: { bot: { status: "ACTIVE" } },
                                 include: { bot: true }
-                            } as any
+                            }
                         }
                     }
                 }
@@ -27,10 +28,10 @@ export async function postReplyJob(job: Job) {
     if (!lead) throw new Error(`Lead ${leadId} not found`);
 
     // Find the campaign assigned to the bot or source
-    const bot = lead.candidate.source.assignedBots[0] || await db.botAccount.findFirst({
+    const bot = lead.candidate.source.assignedBots[0]?.bot || await db.botAccount.findFirst({
         where: { platform: "NEXTDOOR", status: "ACTIVE", campaignId: { not: null } },
         include: { campaign: { include: { steps: { orderBy: { order: "asc" } } } } }
-    });
+    }) as any;
 
     if (!bot || !bot.campaign) {
         console.error(`No active bot or campaign found for lead ${leadId}`);
@@ -47,21 +48,22 @@ export async function postReplyJob(job: Job) {
 
     console.log(`Executing step ${stepIndex + 1}/${campaign.steps.length} for lead ${leadId}`);
 
-    // Post the reply
-    const connector = new NextdoorConnector();
+    const scraper = new NextdoorScraper();
     try {
-        await connector.init({
+        await scraper.init({
             sessionData: bot.sessionData,
-            proxyUrl: bot.proxyUrl || undefined
+            proxyUrl: bot.proxyUrl || undefined,
+            lat: bot.latitude,
+            lng: bot.longitude
         });
 
-        const isLoggedIn = await connector.login(bot.username, bot.password || "");
+        const isLoggedIn = await scraper.login(bot.username, bot.password || "");
         if (!isLoggedIn) throw new Error("Bot login failed during reply");
 
         // Navigate to post and reply
-        // This is a simplified version of the scraper's target
         if (lead.candidate.url) {
-            await connector.postComment(lead.candidate.url, step.content);
+            const success = await scraper.postComment(lead.candidate.url, step.content);
+            if (!success) throw new Error("Failed to post comment");
 
             await db.automationLog.create({
                 data: {
@@ -76,7 +78,6 @@ export async function postReplyJob(job: Job) {
             const nextStep = campaign.steps[stepIndex + 1];
             if (nextStep) {
                 const delayMs = nextStep.delayMinutes * 60 * 1000;
-                // Add some jitter (±10%)
                 const jitter = delayMs * 0.1;
                 const finalDelay = delayMs + (Math.random() * 2 - 1) * jitter;
 
@@ -98,6 +99,6 @@ export async function postReplyJob(job: Job) {
             }
         });
     } finally {
-        await connector.close();
+        await scraper.close();
     }
 }

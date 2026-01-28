@@ -112,6 +112,8 @@ model BotAccount {
   assignedSources BotSourceAssignment[]
   
   cityMatches     String[]      // List of cities this account covers
+  latitude        Float?
+  longitude       Float?
   
   lastLoginAt     DateTime?
   lastCaptchaAt   DateTime?

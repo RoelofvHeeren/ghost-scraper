@@ -35,7 +35,9 @@ export async function pollBotJob(job: Job) {
             // Initialize once with bot's details
             await scraper.init({
                 sessionData: bot.sessionData,
-                proxyUrl: bot.proxyUrl || undefined
+                proxyUrl: bot.proxyUrl || undefined,
+                lat: bot.latitude,
+                lng: bot.longitude
             });
 
             // Login once

@@ -138,6 +138,37 @@ export class NextdoorScraper {
         return posts;
     }
 
+    async postComment(postUrl: string, content: string): Promise<boolean> {
+        if (!this.page) throw new Error("Scraper not initialized");
+
+        try {
+            console.log(`💬 Posting comment to: ${postUrl}`);
+            await this.page.goto(postUrl, { waitUntil: 'networkidle2' });
+
+            // Wait for either the main comment box or another interaction point
+            const boxSelector = '[data-testid="comment-box"], [class*="CommentBox"], textarea';
+            await this.page.waitForSelector(boxSelector, { timeout: 15000 });
+
+            await this.page.click(boxSelector);
+            await new Promise(r => setTimeout(r, 500 + Math.random() * 500));
+
+            // Type with delay
+            await this.page.type(boxSelector, content, { delay: 100 + Math.random() * 100 });
+            await new Promise(r => setTimeout(r, 1000));
+
+            // Press Enter (Nextdoor often handles this, or look for a button)
+            await this.page.keyboard.press('Enter');
+
+            // Wait to ensure it's sent
+            await new Promise(r => setTimeout(r, 3000));
+            console.log("✅ Comment posted successfully.");
+            return true;
+        } catch (e) {
+            console.error(`❌ Failed to post comment:`, e);
+            return false;
+        }
+    }
+
     async getCookies() {
         return await this.page?.cookies();
     }
