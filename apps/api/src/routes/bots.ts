@@ -77,6 +77,8 @@ export async function botRoutes(app: FastifyInstance) {
         try {
             await factory.createBot({
                 ...data,
+                latitude: data.lat,
+                longitude: data.lng,
                 textVerifiedApiKey: apiKey
             });
             return { status: "SUCCESS", message: "Bot created successfully" };
