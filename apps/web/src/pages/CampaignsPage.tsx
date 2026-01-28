@@ -1,11 +1,14 @@
 import { useState } from "react";
-import { MessageSquare, Clock, Plus, Trash2, PlayCircle, Settings, ChevronRight, User, Briefcase, Users } from "lucide-react";
+import { MessageSquare, Clock, Plus, Trash2, PlayCircle, Settings, ChevronRight, User, Briefcase, Users, Loader2 } from "lucide-react";
 import { Modal } from "../components/Modal";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiSvc } from "../lib/api";
 
 type Step = {
     id: string;
     delayMinutes: number;
     content: string;
+    order?: number;
 };
 
 type Campaign = {
@@ -17,21 +20,32 @@ type Campaign = {
 };
 
 export function CampaignsPage() {
-    const [campaigns, setCampaigns] = useState<Campaign[]>([
-        {
-            id: "1",
-            name: "Standard Outreach",
-            status: "ACTIVE",
-            persona: "BUSINESS",
-            steps: [
-                { id: "s1", delayMinutes: 2, content: "Hey! I think I can help with this. Let me check my schedule..." },
-                { id: "s2", delayMinutes: 5, content: "Just checked, we have an opening tomorrow. Give us a call at 555-0123. - John" }
-            ]
-        }
-    ]);
-
+    const queryClient = useQueryClient();
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
+
+    // Real Data Fetching
+    const { data: campaigns, isLoading } = useQuery({
+        queryKey: ['campaigns'],
+        queryFn: apiSvc.getCampaigns
+    });
+
+    const saveMutation = useMutation({
+        mutationFn: (data: any) =>
+            editingCampaign
+                ? apiSvc.updateCampaign(editingCampaign.id, data)
+                : apiSvc.createCampaign(data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['campaigns'] });
+            setIsCreateOpen(false);
+            setEditingCampaign(null);
+        }
+    });
+
+    const deleteMutation = useMutation({
+        mutationFn: apiSvc.deleteCampaign,
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['campaigns'] })
+    });
 
     // Form State for New/Edit
     const [formData, setFormData] = useState<{
@@ -41,7 +55,7 @@ export function CampaignsPage() {
     }>({
         name: "",
         persona: "BUSINESS",
-        steps: [{ id: "1", delayMinutes: 0, content: "" }]
+        steps: [{ id: "1", delayMinutes: 2, content: "" }]
     });
 
     const openCreateModal = () => {
@@ -53,21 +67,17 @@ export function CampaignsPage() {
     const handleSave = () => {
         if (!formData.name) return;
 
-        if (editingCampaign) {
-            setCampaigns(campaigns.map(c => c.id === editingCampaign.id ? { ...c, ...formData } : c));
-        } else {
-            setCampaigns([
-                ...campaigns,
-                {
-                    id: Date.now().toString(),
-                    name: formData.name,
-                    status: "PAUSED",
-                    persona: formData.persona,
-                    steps: formData.steps
-                }
-            ]);
-        }
-        setIsCreateOpen(false);
+        const payload = {
+            name: formData.name,
+            persona: formData.persona,
+            steps: formData.steps.map((s, idx) => ({
+                order: idx,
+                delayMinutes: s.delayMinutes,
+                content: s.content
+            }))
+        };
+
+        saveMutation.mutate(payload);
     };
 
     const addStep = () => {
@@ -112,76 +122,90 @@ export function CampaignsPage() {
                 </button>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {campaigns.map((camp) => (
-                    <div key={camp.id} className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl overflow-hidden shadow-2xl group">
-                        {/* Campaign Header */}
-                        <div className="p-6 border-b border-white/5 flex justify-between items-start bg-black/20">
-                            <div className="flex items-center gap-4">
-                                <div className={`p-3 rounded-xl ${camp.status === 'ACTIVE' ? 'bg-teal-accent/20 text-teal-accent' : 'bg-gray-700/50 text-gray-400'}`}>
-                                    <Settings size={22} className={camp.status === 'ACTIVE' ? 'animate-spin-slow' : ''} />
-                                </div>
-                                <div>
-                                    <h3 className="font-bold text-white text-xl">{camp.name}</h3>
-                                    <div className="flex items-center gap-3 mt-1">
-                                        <div className={`h-2 w-2 rounded-full ${camp.status === 'ACTIVE' ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`}></div>
-                                        <span className="text-xs text-gray-400 tracking-wider font-medium">{camp.status}</span>
-                                        <span className="text-gray-600">|</span>
-                                        <div className="flex items-center gap-1.5 text-xs text-blue-300">
-                                            {camp.persona === 'BUSINESS' ? <Briefcase size={12} /> : <Users size={12} />}
-                                            <span className="uppercase tracking-wider font-bold">{camp.persona}</span>
+            {isLoading ? (
+                <div className="flex items-center justify-center py-20">
+                    <Loader2 className="animate-spin text-teal-accent" size={32} />
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {campaigns?.map((camp: any) => (
+                        <div key={camp.id} className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl overflow-hidden shadow-2xl group">
+                            {/* Campaign Header */}
+                            <div className="p-6 border-b border-white/5 flex justify-between items-start bg-black/20">
+                                <div className="flex items-center gap-4">
+                                    <div className={`p-3 rounded-xl ${camp.status === 'ACTIVE' ? 'bg-teal-accent/20 text-teal-accent' : 'bg-gray-700/50 text-gray-400'}`}>
+                                        <Settings size={22} className={camp.status === 'ACTIVE' ? 'animate-spin-slow' : ''} />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-bold text-white text-xl">{camp.name}</h3>
+                                        <div className="flex items-center gap-3 mt-1">
+                                            <div className={`h-2 w-2 rounded-full ${camp.status === 'ACTIVE' ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`}></div>
+                                            <span className="text-xs text-gray-400 tracking-wider font-medium">{camp.status}</span>
+                                            <span className="text-gray-600">|</span>
+                                            <div className="flex items-center gap-1.5 text-xs text-blue-300">
+                                                {camp.persona === 'BUSINESS' ? <Briefcase size={12} /> : <Users size={12} />}
+                                                <span className="uppercase tracking-wider font-bold">{camp.persona}</span>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-                            <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button
-                                    onClick={() => { setEditingCampaign(camp); setFormData(camp); setIsCreateOpen(true); }}
-                                    className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
-                                >
-                                    <Settings size={18} />
-                                </button>
-                                <button className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors">
-                                    <Trash2 size={18} />
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Sequence Visualizer (Read Only) */}
-                        <div className="p-6 space-y-6 relative">
-                            <div className="absolute left-10 top-6 bottom-6 w-0.5 bg-white/10" />
-                            {/* Trigger Node */}
-                            <div className="relative flex gap-6 z-10">
-                                <div className="w-8 h-8 rounded-full bg-teal-accent border-4 border-[#0a0a0a] flex items-center justify-center shrink-0 shadow-lg shadow-teal-accent/20">
-                                    <PlayCircle size={16} className="text-white" />
-                                </div>
-                                <div className="pt-1">
-                                    <span className="text-xs font-bold text-teal-accent uppercase tracking-wider">Trigger</span>
-                                    <p className="text-sm text-gray-300">Lead Identified & Qualified</p>
+                                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button
+                                        onClick={() => { setEditingCampaign(camp); setFormData({ ...camp }); setIsCreateOpen(true); }}
+                                        className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                                    >
+                                        <Settings size={18} />
+                                    </button>
+                                    <button
+                                        onClick={() => deleteMutation.mutate(camp.id)}
+                                        className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                                    >
+                                        <Trash2 size={18} />
+                                    </button>
                                 </div>
                             </div>
 
-                            {/* Steps */}
-                            {camp.steps.map((step, idx) => (
-                                <div key={step.id} className="relative flex gap-6 z-10 group/step">
-                                    <div className="w-8 h-8 rounded-full bg-[#1a1a1a] border border-white/20 flex items-center justify-center shrink-0">
-                                        <span className="text-xs font-mono text-gray-500">{idx + 1}</span>
+                            {/* Sequence Visualizer (Read Only) */}
+                            <div className="p-6 space-y-6 relative">
+                                <div className="absolute left-10 top-6 bottom-6 w-0.5 bg-white/10" />
+                                {/* Trigger Node */}
+                                <div className="relative flex gap-6 z-10">
+                                    <div className="w-8 h-8 rounded-full bg-teal-accent border-4 border-[#0a0a0a] flex items-center justify-center shrink-0 shadow-lg shadow-teal-accent/20">
+                                        <PlayCircle size={16} className="text-white" />
                                     </div>
-                                    <div className="flex-1 space-y-3">
-                                        <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-[#111] border border-white/10 text-[10px] text-gray-400 uppercase tracking-wider">
-                                            <Clock size={10} />
-                                            Wait {step.delayMinutes} mins
-                                        </div>
-                                        <div className="bg-[#222] border border-white/5 rounded-r-xl rounded-bl-xl p-4 text-sm text-gray-200">
-                                            "{step.content}"
-                                        </div>
+                                    <div className="pt-1">
+                                        <span className="text-xs font-bold text-teal-accent uppercase tracking-wider">Trigger</span>
+                                        <p className="text-sm text-gray-300">Lead Identified & Qualified</p>
                                     </div>
                                 </div>
-                            ))}
+
+                                {/* Steps */}
+                                {camp.steps?.sort((a: any, b: any) => a.order - b.order).map((step: any, idx: number) => (
+                                    <div key={step.id} className="relative flex gap-6 z-10 group/step">
+                                        <div className="w-8 h-8 rounded-full bg-[#1a1a1a] border border-white/20 flex items-center justify-center shrink-0">
+                                            <span className="text-xs font-mono text-gray-500">{idx + 1}</span>
+                                        </div>
+                                        <div className="flex-1 space-y-3">
+                                            <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-[#111] border border-white/10 text-[10px] text-gray-400 uppercase tracking-wider">
+                                                <Clock size={10} />
+                                                Wait {step.delayMinutes} mins
+                                            </div>
+                                            <div className="bg-[#222] border border-white/5 rounded-r-xl rounded-bl-xl p-4 text-sm text-gray-200">
+                                                "{step.content}"
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
-                    </div>
-                ))}
-            </div>
+                    ))}
+                    {campaigns?.length === 0 && (
+                        <div className="col-span-full text-center py-20 text-gray-500 border border-dashed border-white/10 rounded-2xl">
+                            No message flows configured yet.
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Create/Edit Campaign Modal */}
             <Modal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} title={editingCampaign ? "Edit Campaign Flow" : "Create New Campaign"}>
@@ -271,10 +295,10 @@ export function CampaignsPage() {
 
                     <button
                         onClick={handleSave}
-                        disabled={!formData.name}
+                        disabled={!formData.name || saveMutation.isPending}
                         className="w-full py-3 bg-teal-accent text-white font-bold rounded-lg hover:bg-teal-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all mt-4"
                     >
-                        {editingCampaign ? "Save Changes" : "Create Campaign"}
+                        {saveMutation.isPending ? "Saving..." : (editingCampaign ? "Save Changes" : "Create Campaign")}
                     </button>
                 </div>
             </Modal>

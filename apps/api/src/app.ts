@@ -1,3 +1,4 @@
+
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import fastifySwagger from "@fastify/swagger";
@@ -6,6 +7,7 @@ import { serializerCompiler, validatorCompiler, ZodTypeProvider } from "fastify-
 import { adminRoutes } from "./routes/admin.js";
 import { leadsRoutes } from "./routes/leads.js";
 import { webhookRoutes } from "./routes/webhooks.js";
+import { botRoutes } from "./routes/bots.js";
 
 export async function buildApp() {
     const app = Fastify({
@@ -16,7 +18,7 @@ export async function buildApp() {
     app.setSerializerCompiler(serializerCompiler);
 
     await app.register(cors, {
-        origin: true, // Allow all origins (simpler for now) or specify ["https://web-production-a3b7e.up.railway.app"]
+        origin: true,
         methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     });
 
@@ -36,6 +38,7 @@ export async function buildApp() {
     await app.register(adminRoutes, { prefix: "/admin" });
     await app.register(leadsRoutes);
     await app.register(webhookRoutes, { prefix: "/webhooks" });
+    await app.register(botRoutes, { prefix: "/bots" });
 
     app.get("/", async () => {
         return { message: "Ghost Scraper API is running", documentation: "/docs", status: "ok" };

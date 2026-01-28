@@ -12,12 +12,12 @@
     "@fastify/cors": "^8.5.0",
     "@fastify/swagger": "^8.13.0",
     "@fastify/swagger-ui": "^2.0.1",
+    "@ghost-scraper/shared": "^1.0.0",
     "@prisma/client": "6.2.1",
     "dotenv": "^16.3.1",
     "fastify": "^4.25.2",
     "fastify-type-provider-zod": "^1.1.9",
-    "zod": "^3.22.4",
-    "@ghost-scraper/shared": "1.0.0"
+    "zod": "^3.22.4"
   },
   "devDependencies": {
     "@types/node": "^20.10.5",

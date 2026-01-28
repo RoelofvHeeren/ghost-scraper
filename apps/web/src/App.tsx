@@ -6,6 +6,7 @@ import { ClientsPage } from "./pages/ClientsPage";
 import { SimulatorPage } from "./pages/SimulatorPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { CampaignsPage } from "./pages/CampaignsPage";
+import { GhostScraperPage } from "./pages/GhostScraperPage";
 import { SourcesPage } from "./pages/SourcesPage";
 import { BotAccountsPage } from "./pages/BotAccountsPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -70,6 +71,7 @@ function App() {
                             <Route path="/accounts" element={<BotAccountsPage />} />
                             <Route path="/simulator" element={<SimulatorPage />} />
                             <Route path="/campaigns" element={<CampaignsPage />} />
+                            <Route path="/ghost-scraper" element={<GhostScraperPage />} />
                             <Route path="/settings" element={<SettingsPage />} />
                         </Route>
                     </Routes>

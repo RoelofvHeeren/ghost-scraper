@@ -85,12 +85,13 @@ model Source {
   type        SourceType
   name        String
   enabled     Boolean   @default(true)
-  config      Json
+  config      Json      // { "monitorNearby": true, "monitorGroups": ["url1", "url2"], "keywords": [...] }
   pollSeconds Int       @default(300)
 
   createdAt   DateTime  @default(now())
   candidates  LeadCandidate[]
   connectorState ConnectorState?
+  assignedBots BotSourceAssignment[]
 }
 
 model BotAccount {
@@ -101,18 +102,41 @@ model BotAccount {
   email           String?
   
   status          AccountStatus @default(ACTIVE)
-  sessionData     Json?         // Cookies / storage state
+  sessionData     Json?         // { cookies, localStorage, fingerprint }
   proxyUrl        String?
+  
+  // Relationships
+  campaignId      String?
+  campaign        Campaign?     @relation(fields: [campaignId], references: [id])
+  
+  assignedSources BotSourceAssignment[]
   
   cityMatches     String[]      // List of cities this account covers
   
   lastLoginAt     DateTime?
   lastCaptchaAt   DateTime?
+  loginErrorCount Int           @default(0)
   dailyPostCount  Int           @default(0)
   dailyScrapeCount Int          @default(0)
+  maxDailyPosts   Int           @default(10)
   
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
+}
+
+model BotSourceAssignment {
+  id         String     @id @default(cuid())
+  botId      String
+  bot        BotAccount @relation(fields: [botId], references: [id], onDelete: Cascade)
+  sourceId   String
+  source     Source     @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  
+  priority   Int        @default(0)  // For ordering which sources to poll first
+  createdAt  DateTime   @default(now())
+  
+  @@unique([botId, sourceId])
+  @@index([botId])
+  @@index([sourceId])
 }
 
 model ConnectorState {
@@ -209,4 +233,39 @@ model CallEvent {
   recordingUrl String?
 
   createdAt DateTime @default(now())
+}
+
+model Campaign {
+  id          String   @id @default(cuid())
+  name        String
+  persona     String   @default("BUSINESS") // "BUSINESS" | "COMMUNITY"
+  status      String   @default("PAUSED")   // "ACTIVE" | "PAUSED"
+  
+  steps       CampaignStep[]
+  bots        BotAccount[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model CampaignStep {
+  id            String   @id @default(cuid())
+  campaignId    String
+  campaign      Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  
+  order         Int      // Step sequence number (0, 1, 2...)
+  delayMinutes  Int      // Wait before executing this step
+  content       String   @db.Text // Message template
+  
+  createdAt     DateTime @default(now())
+  
+  @@index([campaignId, order])
+}
+
+model Settings {
+  id        String   @id @default(cuid())
+  key       String   @unique // e.g., "TEXTVERIFIED_API_KEY"
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Check, ChevronRight, Sparkles, Key, Globe, ShieldCheck, MessageSquare, Briefcase, Users, Plus, Clock, Trash2 } from "lucide-react";
+import { Check, ChevronRight, Sparkles, Key, Globe, ShieldCheck, MessageSquare, Briefcase, Users, Plus, Clock, Trash2, Loader2 } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { apiSvc } from "../lib/api";
 
 const steps = [
     { id: 1, title: "API Configuration", icon: Key },
@@ -15,6 +17,7 @@ export function OnboardingPage() {
 
     // Form State
     const [formData, setFormData] = useState({
+        clientName: "My Real Estate Engine",
         openaiKey: "",
         twilioSid: "",
         twilioToken: "",
@@ -22,11 +25,51 @@ export function OnboardingPage() {
         nextdoorPass: "",
         proxyUrl: "",
         safetyEnabled: true,
-        campaignName: "Default Outreach",
-        persona: "BUSINESS",
+        campaignName: "HVAC Outreach",
+        persona: "BUSINESS" as "BUSINESS" | "COMMUNITY",
         steps: [
             { id: "1", delayMinutes: 2, content: "Hi! I noticed you were looking for help with {service}. I might be able to assist." }
         ]
+    });
+
+    const finishMutation = useMutation({
+        mutationFn: async () => {
+            // 1. Create Client
+            const client = await apiSvc.createClient({
+                name: formData.clientName,
+                config: {
+                    openaiKey: formData.openaiKey,
+                    twilioSid: formData.twilioSid,
+                    twilioToken: formData.twilioToken
+                }
+            });
+
+            // 2. Create Campaign
+            const campaign = await apiSvc.createCampaign({
+                name: formData.campaignName,
+                persona: formData.persona,
+                steps: formData.steps.map((s, idx) => ({
+                    order: idx,
+                    delayMinutes: s.delayMinutes,
+                    content: s.content
+                }))
+            });
+
+            // 3. Create Bot Account
+            await apiSvc.createBot({
+                username: formData.nextdoorUser,
+                password: formData.nextdoorPass,
+                platform: "NEXTDOOR",
+                campaignId: campaign.id,
+                proxyUrl: formData.proxyUrl || undefined,
+            });
+
+            return client;
+        },
+        onSuccess: () => {
+            localStorage.setItem("ghost_onboarding_complete", "true");
+            navigate("/");
+        }
     });
 
     const updateForm = (key: string, value: any) => {
@@ -58,22 +101,17 @@ export function OnboardingPage() {
         if (currentStep < 4) {
             setCurrentStep(curr => curr + 1);
         } else {
-            // Save data (mock)
-            console.log("Saving onboarding data:", formData);
-            localStorage.setItem("ghost_onboarding_complete", "true");
-            navigate("/");
+            finishMutation.mutate();
         }
     };
 
     return (
         <div className="min-h-screen flex items-center justify-center relative">
-            {/* Background Video (Reused) */}
             <video autoPlay muted loop playsInline className="bg-video">
                 <source src="/background.mp4" type="video/mp4" />
             </video>
 
             <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-8 rounded-3xl shadow-luxury max-w-2xl w-full mx-4 relative z-10 max-h-[90vh] overflow-y-auto">
-                {/* Header */}
                 <div className="text-center mb-10">
                     <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-black border border-white/10 shadow-sharp mb-4">
                         <Sparkles className="w-8 h-8 text-teal-accent" />
@@ -82,13 +120,12 @@ export function OnboardingPage() {
                     <p className="text-gray-400">Let's get your autonomous lead engine set up.</p>
                 </div>
 
-                {/* Stepper */}
                 <div className="flex justify-between items-center mb-12 relative px-8">
-                    <div className="absolute top-1/2 left-0 w-full h-0.5 bg-white/10 -z-10"></div>
+                    <div className="absolute top-1/2 left-0 w-full h-0.5 bg-white/10-z-10"></div>
                     {steps.map((step) => (
                         <div key={step.id} className="flex flex-col items-center gap-2 bg-[#0a0a0a] px-2 z-10">
                             <div className={`w-10 h-10 rounded-full flex items-center justify-center border transition-all duration-300 ${currentStep >= step.id
-                                ? 'bg-teal-accent text-white border-teal-accent'
+                                ? 'bg-teal-accent text-white border-teal-accent shadow-[0_0_15px_rgba(20,184,166,0.3)]'
                                 : 'bg-black border-white/20 text-gray-500'
                                 }`}>
                                 {currentStep > step.id ? <Check size={16} /> : <step.icon size={16} />}
@@ -100,12 +137,20 @@ export function OnboardingPage() {
                     ))}
                 </div>
 
-                {/* Content Area */}
                 <div className="min-h-[300px]">
                     {currentStep === 1 && (
                         <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
                             <h2 className="text-xl font-bold text-white">API Keys</h2>
                             <div className="space-y-3">
+                                <div>
+                                    <label className="text-xs text-gray-400 uppercase tracking-wider block mb-1">Company Name</label>
+                                    <input
+                                        type="text"
+                                        value={formData.clientName}
+                                        onChange={(e) => updateForm('clientName', e.target.value)}
+                                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-teal-accent/50"
+                                    />
+                                </div>
                                 <div>
                                     <label className="text-xs text-gray-400 uppercase tracking-wider block mb-1">OpenAI API Key</label>
                                     <input
@@ -117,22 +162,12 @@ export function OnboardingPage() {
                                     />
                                 </div>
                                 <div>
-                                    <label className="text-xs text-gray-400 uppercase tracking-wider block mb-1">Twilio Account SID</label>
+                                    <label className="text-xs text-gray-400 uppercase tracking-wider block mb-1">Twilio Account SID (Optional)</label>
                                     <input
                                         type="text"
                                         value={formData.twilioSid}
                                         onChange={(e) => updateForm('twilioSid', e.target.value)}
                                         placeholder="AC..."
-                                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-teal-accent/50"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-xs text-gray-400 uppercase tracking-wider block mb-1">Twilio Auth Token</label>
-                                    <input
-                                        type="password"
-                                        value={formData.twilioToken}
-                                        onChange={(e) => updateForm('twilioToken', e.target.value)}
-                                        placeholder="Token..."
                                         className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-teal-accent/50"
                                     />
                                 </div>
@@ -267,7 +302,6 @@ export function OnboardingPage() {
                     )}
                 </div>
 
-                {/* Actions */}
                 <div className="flex justify-between mt-8 pt-6 border-t border-white/10">
                     <button
                         onClick={() => currentStep > 1 && setCurrentStep(c => c - 1)}
@@ -276,11 +310,18 @@ export function OnboardingPage() {
                         Back
                     </button>
                     <button
+                        disabled={finishMutation.isPending}
                         onClick={handleNext}
-                        className="px-6 py-3 bg-white text-black font-bold rounded-xl shadow-lg hover:shadow-xl hover:bg-gray-200 transition-all duration-300 flex items-center gap-2"
+                        className="px-6 py-3 bg-white text-black font-bold rounded-xl shadow-lg hover:shadow-xl hover:bg-gray-200 transition-all duration-300 flex items-center gap-2 disabled:opacity-50"
                     >
-                        {currentStep === 4 ? "Finish Setup" : "Next Step"}
-                        <ChevronRight size={18} />
+                        {finishMutation.isPending ? (
+                            <>Initialing Engine <Loader2 size={18} className="animate-spin" /></>
+                        ) : (
+                            <>
+                                {currentStep === 4 ? "Finish Setup" : "Next Step"}
+                                <ChevronRight size={18} />
+                            </>
+                        )}
                     </button>
                 </div>
             </div>

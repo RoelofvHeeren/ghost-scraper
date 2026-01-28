@@ -10,12 +10,15 @@
     "test": "playwright test"
   },
   "dependencies": {
+    "@ghost-scraper/shared": "1.0.0",
+    "node-fetch": "^2.7.0",
     "playwright-extra": "^4.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2",
-    "@ghost-scraper/shared": "1.0.0"
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
   },
   "devDependencies": {
     "@prisma/client": "6.2.1",
+    "@types/node-fetch": "^2.6.13",
     "prisma": "6.2.1"
   }
 }

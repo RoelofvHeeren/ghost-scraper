@@ -1,40 +1,50 @@
-import { Map, Rss, Globe, Plus, Search, Tag, ExternalLink } from "lucide-react";
+import { Map, Rss, Globe, Plus, Search, Tag, ExternalLink, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { Modal } from "../components/Modal";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiSvc } from "../lib/api";
 
 const SUPPORTED_PLATFORMS = [
-    { id: 'nextdoor', name: 'Nextdoor', icon: Map, color: 'text-green-400', bg: 'bg-green-400/10', border: 'border-green-400/20' },
-    { id: 'reddit', name: 'Reddit', icon: Rss, color: 'text-orange-400', bg: 'bg-orange-400/10', border: 'border-orange-400/20' },
-    { id: 'custom', name: 'Custom Site', icon: Globe, color: 'text-blue-400', bg: 'bg-blue-400/10', border: 'border-blue-400/20' },
+    { id: 'NEXTDOOR', name: 'Nextdoor', icon: Map, color: 'text-green-400', bg: 'bg-green-400/10', border: 'border-green-400/20' },
+    { id: 'REDDIT', name: 'Reddit', icon: Rss, color: 'text-orange-400', bg: 'bg-orange-400/10', border: 'border-orange-400/20' },
+    { id: 'FACEBOOK', name: 'Facebook', icon: Globe, color: 'text-blue-400', bg: 'bg-blue-400/10', border: 'border-blue-400/20' },
 ];
 
 export function SourcesPage() {
+    const queryClient = useQueryClient();
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [activeSources, setActiveSources] = useState([
-        { id: 1, name: 'Nextdoor - Neighborhoods', platform: 'nextdoor', query: 'landscaper near Denver', context: 'service_providers', status: 'active', leadsFound: 124 },
-        { id: 2, name: 'r/realestateinvesting', platform: 'reddit', query: 'r/realestateinvesting', context: 'investors', status: 'paused', leadsFound: 45 },
-    ]);
+
+    const { data: sources, isLoading } = useQuery({
+        queryKey: ['sources'],
+        queryFn: apiSvc.getSources
+    });
+
+    const createMutation = useMutation({
+        mutationFn: apiSvc.createSource,
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['sources'] });
+            setIsModalOpen(false);
+            setNewSource({ name: '', platform: 'NEXTDOOR', query: '', context: '' });
+        }
+    });
 
     const [newSource, setNewSource] = useState({
         name: '',
-        platform: 'nextdoor',
+        platform: 'NEXTDOOR',
         query: '',
         context: ''
     });
 
     const handleAddSource = () => {
-        const source = {
-            id: Date.now(),
+        createMutation.mutate({
             name: newSource.name || `${newSource.platform} - ${newSource.query}`,
-            platform: newSource.platform,
-            query: newSource.query,
-            context: newSource.context,
-            status: 'active',
-            leadsFound: 0
-        };
-        setActiveSources([...activeSources, source]);
-        setIsModalOpen(false);
-        setNewSource({ name: '', platform: 'nextdoor', query: '', context: '' });
+            type: newSource.platform,
+            config: {
+                keywords: newSource.query.split(',').map(k => k.trim()),
+                context: newSource.context
+            },
+            enabled: true
+        });
     };
 
     return (
@@ -62,42 +72,55 @@ export function SourcesPage() {
                             <Search size={18} className="text-teal-accent" /> Active Monitors
                         </h3>
 
-                        <div className="space-y-3">
-                            {activeSources.map(source => (
-                                <div key={source.id} className="group flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 rounded-xl bg-black/20 border border-white/5 hover:border-teal-accent/20 transition-all gap-4">
-                                    <div className="flex items-center gap-4">
-                                        <div className={`h-12 w-12 shrink-0 rounded-lg flex items-center justify-center ${source.platform === 'nextdoor' ? 'bg-green-500/20 text-green-400' :
-                                                source.platform === 'reddit' ? 'bg-orange-500/20 text-orange-400' : 'bg-blue-500/20 text-blue-400'
-                                            }`}>
-                                            {source.platform === 'nextdoor' ? <Map size={24} /> : source.platform === 'reddit' ? <Rss size={24} /> : <Globe size={24} />}
-                                        </div>
-                                        <div>
-                                            <h4 className="text-white font-medium text-lg">{source.name}</h4>
-                                            <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 mt-1">
-                                                <div className="flex items-center gap-1.5 bg-white/5 px-2 py-0.5 rounded-md border border-white/5">
-                                                    <Search size={10} />
-                                                    <span className="font-mono text-gray-400">{source.query}</span>
-                                                </div>
-                                                {source.context && (
+                        {isLoading ? (
+                            <div className="flex items-center justify-center py-20">
+                                <Loader2 className="animate-spin text-teal-accent" size={32} />
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                {sources?.map((source: any) => (
+                                    <div key={source.id} className="group flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 rounded-xl bg-black/20 border border-white/5 hover:border-teal-accent/20 transition-all gap-4">
+                                        <div className="flex items-center gap-4">
+                                            <div className={`h-12 w-12 shrink-0 rounded-lg flex items-center justify-center ${source.type === 'NEXTDOOR' ? 'bg-green-500/20 text-green-400' :
+                                                source.type === 'REDDIT' ? 'bg-orange-500/20 text-orange-400' : 'bg-blue-500/20 text-blue-400'
+                                                }`}>
+                                                {source.type === 'NEXTDOOR' ? <Map size={24} /> : source.type === 'REDDIT' ? <Rss size={24} /> : <Globe size={24} />}
+                                            </div>
+                                            <div>
+                                                <h4 className="text-white font-medium text-lg">{source.name}</h4>
+                                                <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 mt-1">
                                                     <div className="flex items-center gap-1.5 bg-white/5 px-2 py-0.5 rounded-md border border-white/5">
-                                                        <Tag size={10} />
-                                                        <span>{source.context}</span>
+                                                        <Search size={10} />
+                                                        <span className="font-mono text-gray-400 max-w-[200px] truncate">
+                                                            {Array.isArray(source.config?.keywords) ? source.config.keywords.join(', ') : 'No keywords'}
+                                                        </span>
                                                     </div>
-                                                )}
-                                                <div className="flex items-center gap-1.5 ml-1">
-                                                    <span className={`h-1.5 w-1.5 rounded-full ${source.status === 'active' ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`}></span>
-                                                    <span className="uppercase tracking-wider">{source.status}</span>
+                                                    {source.config?.context && (
+                                                        <div className="flex items-center gap-1.5 bg-white/5 px-2 py-0.5 rounded-md border border-white/5">
+                                                            <Tag size={10} />
+                                                            <span>{source.config.context}</span>
+                                                        </div>
+                                                    )}
+                                                    <div className="flex items-center gap-1.5 ml-1">
+                                                        <span className={`h-1.5 w-1.5 rounded-full ${source.enabled ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`}></span>
+                                                        <span className="uppercase tracking-wider">{source.enabled ? 'active' : 'paused'}</span>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
+                                        <div className="text-right shrink-0">
+                                            <div className="text-2xl font-serif text-white">{source._count?.candidates || 0}</div>
+                                            <div className="text-xs text-gray-500">Candidates</div>
+                                        </div>
                                     </div>
-                                    <div className="text-right shrink-0">
-                                        <div className="text-2xl font-serif text-white">{source.leadsFound}</div>
-                                        <div className="text-xs text-gray-500">Leads Found</div>
+                                ))}
+                                {sources?.length === 0 && (
+                                    <div className="text-center py-20 text-gray-500 border border-dashed border-white/10 rounded-xl">
+                                        No sources configured yet.
                                     </div>
-                                </div>
-                            ))}
-                        </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -131,8 +154,8 @@ export function SourcesPage() {
                                     key={p.id}
                                     onClick={() => setNewSource({ ...newSource, platform: p.id })}
                                     className={`p-3 rounded-lg border text-sm font-medium transition-all ${newSource.platform === p.id
-                                            ? `bg-teal-500/20 border-teal-500 text-white shadow-[0_0_15px_rgba(20,184,166,0.3)]`
-                                            : 'bg-black/40 border-white/10 text-gray-400 hover:bg-white/5'
+                                        ? `bg-teal-500/20 border-teal-500 text-white shadow-[0_0_15px_rgba(20,184,166,0.3)]`
+                                        : 'bg-black/40 border-white/10 text-gray-400 hover:bg-white/5'
                                         }`}
                                 >
                                     {p.name}
@@ -154,7 +177,7 @@ export function SourcesPage() {
 
                     <div>
                         <label className="text-xs text-gray-400 uppercase tracking-wider block mb-1">
-                            {newSource.platform === 'reddit' ? 'Subreddit / Search Query' : 'Search Query / URL'}
+                            {newSource.platform === 'REDDIT' ? 'Subreddit / Search Query' : 'Search Keywords (comma separated)'}
                         </label>
                         <div className="relative">
                             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
@@ -162,7 +185,7 @@ export function SourcesPage() {
                                 type="text"
                                 value={newSource.query}
                                 onChange={(e) => setNewSource({ ...newSource, query: e.target.value })}
-                                placeholder={newSource.platform === 'reddit' ? 'r/investing or "keyword"' : 'landscapers in Denver, CO'}
+                                placeholder={newSource.platform === 'REDDIT' ? 'r/investing or "keyword"' : 'landscapers, roofing, water damage'}
                                 className="w-full bg-black/40 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-white focus:outline-none focus:border-teal-accent/50"
                             />
                         </div>
@@ -184,8 +207,12 @@ export function SourcesPage() {
 
                     <div className="pt-4 flex justify-end gap-3">
                         <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-gray-400 hover:text-white transition-colors">Cancel</button>
-                        <button onClick={handleAddSource} className="px-6 py-2 bg-white text-black font-bold rounded-lg shadow-lg hover:bg-gray-200 transition-all">
-                            Add Source
+                        <button
+                            disabled={createMutation.isPending}
+                            onClick={handleAddSource}
+                            className="px-6 py-2 bg-white text-black font-bold rounded-lg shadow-lg hover:bg-gray-200 transition-all disabled:opacity-50"
+                        >
+                            {createMutation.isPending ? 'Adding...' : 'Add Source'}
                         </button>
                     </div>
                 </div>

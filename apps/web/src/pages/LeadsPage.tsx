@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import axios from "axios";
 import { formatDistanceToNow } from "date-fns";
 import { Loader2, ExternalLink, Briefcase, MapPin, Building2, Calendar, User } from "lucide-react";
+import { apiSvc } from "../lib/api";
 
 type Lead = {
     id: string;
@@ -22,10 +22,7 @@ type Lead = {
 export function LeadsPage() {
     const { data, isLoading, error } = useQuery<{ data: Lead[] }>({
         queryKey: ["leads"],
-        queryFn: () => {
-            const baseUrl = import.meta.env.VITE_API_URL || "";
-            return axios.get(`${baseUrl}/leads`).then((res) => res.data);
-        },
+        queryFn: apiSvc.getLeads,
         refetchInterval: 15000,
     });
 
@@ -72,8 +69,8 @@ export function LeadsPage() {
                         <div className="flex justify-between items-start mb-4">
                             <div className="flex items-center gap-2">
                                 <span className={`px-2.5 py-1 rounded-full text-xs font-bold tracking-wide border ${lead.status === 'NEW' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
-                                        lead.status === 'CONTACTED' ? 'bg-green-500/10 text-green-400 border-green-500/20' :
-                                            'bg-gray-500/10 text-gray-400 border-gray-500/20'
+                                    lead.status === 'CONTACTED' ? 'bg-green-500/10 text-green-400 border-green-500/20' :
+                                        'bg-gray-500/10 text-gray-400 border-gray-500/20'
                                     }`}>
                                     {lead.status}
                                 </span>

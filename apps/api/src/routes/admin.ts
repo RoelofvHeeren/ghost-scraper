@@ -31,7 +31,7 @@ export async function adminRoutes(app: FastifyInstance) {
     server.get("/sources", async () => {
         return db.source.findMany({
             orderBy: { createdAt: "desc" },
-            include: { connectorState: true }
+            include: { connectorState: true, assignedBots: { include: { bot: true } } }
         });
     });
 
@@ -53,7 +53,14 @@ export async function adminRoutes(app: FastifyInstance) {
     // --- Bot Accounts ---
     server.get("/bot-accounts", async () => {
         return db.botAccount.findMany({
-            orderBy: { createdAt: "desc" }
+            orderBy: { createdAt: "desc" },
+            include: {
+                campaign: true,
+                assignedSources: {
+                    include: { source: true },
+                    orderBy: { priority: 'asc' }
+                }
+            }
         });
     });
 
@@ -65,12 +72,145 @@ export async function adminRoutes(app: FastifyInstance) {
                 password: z.string().optional(),
                 email: z.string().optional(),
                 proxyUrl: z.string().optional(),
-                cityMatches: z.array(z.string()).default([])
+                cityMatches: z.array(z.string()).default([]),
+                campaignId: z.string().optional(),
+                sourceIds: z.array(z.string()).optional(),
+                maxDailyPosts: z.number().default(10)
             })
         }
     }, async (req) => {
-        return db.botAccount.create({
-            data: req.body as any
+        const { sourceIds, ...botData } = req.body as any;
+
+        const bot = await db.botAccount.create({
+            data: botData
         });
+
+        // Create source assignments if provided
+        if (sourceIds && sourceIds.length > 0) {
+            await db.botSourceAssignment.createMany({
+                data: sourceIds.map((sourceId: string, index: number) => ({
+                    botId: bot.id,
+                    sourceId,
+                    priority: index
+                }))
+            });
+        }
+
+        return db.botAccount.findUnique({
+            where: { id: bot.id },
+            include: { assignedSources: { include: { source: true } } }
+        });
+    });
+
+    // Update bot source assignments
+    server.put("/bot-accounts/:id/sources", {
+        schema: {
+            params: z.object({ id: z.string() }),
+            body: z.object({
+                sourceIds: z.array(z.string())
+            })
+        }
+    }, async (req) => {
+        const { id } = req.params as any;
+        const { sourceIds } = req.body as any;
+
+        // Delete existing assignments
+        await db.botSourceAssignment.deleteMany({ where: { botId: id } });
+
+        // Create new assignments
+        if (sourceIds.length > 0) {
+            await db.botSourceAssignment.createMany({
+                data: sourceIds.map((sourceId: string, index: number) => ({
+                    botId: id,
+                    sourceId,
+                    priority: index
+                }))
+            });
+        }
+
+        return db.botAccount.findUnique({
+            where: { id },
+            include: { assignedSources: { include: { source: true } } }
+        });
+    });
+
+    // --- Campaigns ---
+    server.get("/campaigns", async () => {
+        return db.campaign.findMany({
+            orderBy: { createdAt: "desc" },
+            include: { steps: { orderBy: { order: "asc" } }, bots: true }
+        });
+    });
+
+    server.post("/campaigns", {
+        schema: {
+            body: z.object({
+                name: z.string(),
+                persona: z.enum(["BUSINESS", "COMMUNITY"]),
+                status: z.enum(["ACTIVE", "PAUSED"]).default("PAUSED"),
+                steps: z.array(z.object({
+                    order: z.number(),
+                    delayMinutes: z.number(),
+                    content: z.string()
+                }))
+            })
+        }
+    }, async (req) => {
+        const { steps, ...rest } = req.body as any;
+        return db.campaign.create({
+            data: {
+                ...rest,
+                steps: {
+                    create: steps
+                }
+            }
+        });
+    });
+
+    server.put("/campaigns/:id", {
+        schema: {
+            params: z.object({ id: z.string() }),
+            body: z.object({
+                name: z.string().optional(),
+                persona: z.enum(["BUSINESS", "COMMUNITY"]).optional(),
+                status: z.enum(["ACTIVE", "PAUSED"]).optional(),
+                steps: z.array(z.object({
+                    order: z.number(),
+                    delayMinutes: z.number(),
+                    content: z.string()
+                })).optional()
+            })
+        }
+    }, async (req) => {
+        const { id } = req.params as any;
+        const { steps, ...rest } = req.body as any;
+
+        if (steps) {
+            // Delete existing steps and create new ones for simplicity in MVP
+            await db.campaignStep.deleteMany({ where: { campaignId: id } });
+            return db.campaign.update({
+                where: { id },
+                data: {
+                    ...rest,
+                    steps: {
+                        create: steps
+                    }
+                }
+            });
+        }
+
+        return db.campaign.update({
+            where: { id },
+            data: rest
+        });
+    });
+
+    server.delete("/campaigns/:id", {
+        schema: {
+            params: z.object({ id: z.string() })
+        }
+    }, async (req) => {
+        const { id } = req.params as any;
+        return db.campaign.delete({ where: { id } });
     });
 }

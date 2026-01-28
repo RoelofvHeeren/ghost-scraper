@@ -1,8 +1,10 @@
 import dotenv from "dotenv";
 import { Worker } from "bullmq";
-import { redisConnection, pollQueue } from "./lib/queues.js";
+import { redisConnection } from "./lib/queues.js";
 import { QUEUES } from "@ghost-scraper/shared";
 import { pollSourceJob } from "./jobs/poll.js";
+import { processCandidateJob } from "./jobs/process.js";
+import { postReplyJob } from "./jobs/reply.js";
 
 dotenv.config({ path: "../../.env" });
 
@@ -18,18 +20,16 @@ async function main() {
     // Worker for Processing Candidates
     new Worker(QUEUES.PROCESS_CANDIDATE, async (job) => {
         console.log(`Processing Process Job: ${job.name}`);
+        await processCandidateJob(job);
     }, { connection: redisConnection as any });
 
     // Worker for Posting Replies
     new Worker(QUEUES.POST_REPLY, async (job) => {
         console.log(`Processing Reply Job: ${job.name}`);
+        await postReplyJob(job);
     }, { connection: redisConnection as any });
 
     console.log("Workers are listening!");
-
-    // Schedule initial poll jobs if needed or they are scheduled by API/Cron
-    // For MVP, we can run a loop here or use repeatable jobs
-    // await pollQueue.add("poll-nextdoor", { source: "NEXTDOOR" }, { repeat: { every: 60000 } });
 }
 
 main();
