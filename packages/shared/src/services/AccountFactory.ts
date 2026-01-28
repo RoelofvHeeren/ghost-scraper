@@ -17,6 +17,7 @@ interface AccountRequest {
     latitude?: number;
     longitude?: number;
     address?: string;
+    password?: string;
 }
 
 export class AccountFactory {
@@ -34,7 +35,7 @@ export class AccountFactory {
         // Smart Email Alias: base+first999@gmail.com
         const [user, domain] = req.baseEmail.split('@');
         const email = `${user}+${first.toLowerCase()}${randomDigits}@${domain}`;
-        const password = `Pass${Math.random().toString(36).slice(-8)}!`;
+        const password = req.password || `Pass${Math.random().toString(36).slice(-8)}!`;
 
         console.log(`🏭 Starting Factory for: ${first} ${last} (${email})`);
 
@@ -48,7 +49,8 @@ export class AccountFactory {
             executablePath: executablePath(),
             args: [
                 `--proxy-server=${proxyUrl.hostname}:${proxyUrl.port}`,
-                '--no-sandbox'
+                '--no-sandbox',
+                '--lang=en-US'
             ]
         });
 
@@ -131,87 +133,118 @@ export class AccountFactory {
             await this.clickButtonByText(page, 'Continue');
 
             // Step 4: Hybrid Verification Check
-            console.log('🤔 Checking next step: Phone Verify OR Direct Success...');
+            console.log('🤔 Checking next step: Phone, GPS Verify, or Success...');
 
-            // Race condition: Phone input vs Feed
             const verifySelector = 'input[aria-label="Mobile number"]';
-            const feedSelector = 'div[data-testid="feed-container"], a[href="/news_feed/"]'; // Typical feed markers
+            // Button often says "Verify with current address" or similar
+            // We'll perform a text search for buttons
 
-            const result = await Promise.race([
-                page.waitForSelector(verifySelector, { visible: true }).then(() => 'PHONE'),
-                // page.waitForSelector(feedSelector, { visible: true }).then(() => 'SUCCESS'), // Disabled feed check for now to ensure we don't false positive if feed loads under modal
-                // Actually, if we see feed, we ARE good.
-                new Promise(resolve => setTimeout(() => resolve('TIMEOUT'), 15000))
-            ]);
+            let verificationAction = 'WAIT';
+            let retries = 0;
 
-            if (result === 'SUCCESS') {
-                console.log('🎉 AMAZING! GPS Spoofing worked. No Phone Verification needed.');
-            } else if (result === 'PHONE' || result === 'TIMEOUT') {
-                // If timeout, we assume it might be loading slow or asking for phone. 
-                // We'll check again or just proceed to try phone logic if input exists.
+            while (verificationAction === 'WAIT' && retries < 20) {
+                await new Promise(r => setTimeout(r, 1000));
+                retries++;
 
-                if (result === 'TIMEOUT') {
-                    // Check if phone input is there now?
-                    const hasPhone = await page.$(verifySelector);
-                    if (!hasPhone) {
-                        console.log('⚠️ Timeout and no phone input. Checking for success indicators...');
-                        // Assuming success if no blockers
-                    } else {
-                        console.log('📱 Phone Verify appeared late.');
-                    }
-                }
-
+                // 1. Check for Phone Input
                 if (await page.$(verifySelector)) {
-                    console.log('📱 Phone Verification required. Proceeding with TextVerified...');
-
-                    // A. Request Number
-                    console.log('📡 Requesting SMS Number...');
-                    const verification = await smsService.createVerification();
-                    console.log(`📡 Clean Number Acquired: ${verification.number}`);
-
-                    // B. Input Number
-                    await page.type('input[aria-label="Mobile number"]', verification.number, { delay: 50 });
-                    await this.clickButtonByText(page, 'Text me a code');
-
-                    // C. Poll for Code
-                    console.log('⏳ Waiting for SMS Code...');
-                    let code: string | undefined;
-                    // Poll for 90 seconds
-                    for (let i = 0; i < 30; i++) {
-                        await new Promise(r => setTimeout(r, 3000));
-                        const status = await smsService.getVerification(verification.id);
-                        console.log(`   Poll Status: ${status.state}`);
-
-                        if (status.sms?.code) {
-                            code = status.sms.code;
-                            console.log(`✅ Code Received: ${code}`);
-                            break;
-                        }
-
-                        if (status.state === 'verificationTimedOut' || status.state === 'cancelled') {
-                            throw new Error("SMS Verification Timed Out/Cancelled");
-                        }
-                    }
-
-                    if (!code) throw new Error("SMS Timeout (No code received)");
-
-                    // D. Enter Code
-                    console.log(`⌨️ Entering Code: ${code}`);
-                    const codeInputSelector = 'input[aria-label="Verification code"], input[name="code"], input[autocomplete="one-time-code"]';
-                    try {
-                        await page.waitForSelector(codeInputSelector, { timeout: 10000 });
-                        await page.type(codeInputSelector, code, { delay: 100 });
-                    } catch {
-                        console.log('⚠️ Could not find specific code input, typing into first visible input.');
-                        await page.keyboard.type(code);
-                    }
-
-                    // E. Submit
-                    await new Promise(r => setTimeout(r, 500));
-                    await this.clickButtonByText(page, 'Verify', 5000)
-                        .catch(() => this.clickButtonByText(page, 'Submit', 5000))
-                        .catch(() => this.clickButtonByText(page, 'Continue', 5000));
+                    verificationAction = 'PHONE';
+                    break;
                 }
+
+                // 2. Check for "Verify with current address" specific button
+                const gpsButtonFound = await page.evaluate(() => {
+                    const buttons = Array.from(document.querySelectorAll('button'));
+                    return buttons.some(b =>
+                        b.innerText.toLowerCase().includes('current address') ||
+                        b.innerText.toLowerCase().includes('verify location')
+                    );
+                });
+
+                if (gpsButtonFound) {
+                    verificationAction = 'GPS_BUTTON';
+                    break;
+                }
+
+                // 3. Check for Feed (Success)
+                // If url contains 'news_feed' or we see feed container
+                if (page.url().includes('news_feed') || await page.$('div[data-testid="feed-container"]')) {
+                    verificationAction = 'SUCCESS';
+                    break;
+                }
+            }
+
+            if (verificationAction === 'SUCCESS') {
+                console.log('🎉 AMAZING! Auto-verified by address match.');
+            }
+            else if (verificationAction === 'GPS_BUTTON') {
+                console.log('📍 "Verify with current address" button found! Clicking it...');
+                // Click the button that contains "current address" or "verify location"
+                await page.evaluate(() => {
+                    const buttons = Array.from(document.querySelectorAll('button'));
+                    const btn = buttons.find(b =>
+                        b.innerText.toLowerCase().includes('current address') ||
+                        b.innerText.toLowerCase().includes('verify location')
+                    );
+                    if (btn) (btn as HTMLElement).click();
+                });
+                console.log('🎉 Clicked Address Verification. Assuming success.');
+            }
+            else if (verificationAction === 'TIMEOUT') {
+                console.log('⚠️ Timeline expired. No obvious next step found. Checking one last time...');
+            }
+
+            // Only do SMS if explicitly PHONE
+            if (verificationAction === 'PHONE') {
+                console.log('📱 Phone Verification required. Proceeding with TextVerified...');
+
+                // A. Request Number
+                console.log('📡 Requesting SMS Number...');
+                const verification = await smsService.createVerification();
+                console.log(`📡 Clean Number Acquired: ${verification.number}`);
+
+                // B. Input Number
+                await page.type('input[aria-label="Mobile number"]', verification.number, { delay: 50 });
+                await this.clickButtonByText(page, 'Text me a code');
+
+                // C. Poll for Code
+                console.log('⏳ Waiting for SMS Code...');
+                let code: string | undefined;
+                // Poll for 90 seconds
+                for (let i = 0; i < 30; i++) {
+                    await new Promise(r => setTimeout(r, 3000));
+                    const status = await smsService.getVerification(verification.id);
+                    console.log(`   Poll Status: ${status.state}`);
+
+                    if (status.sms?.code) {
+                        code = status.sms.code;
+                        console.log(`✅ Code Received: ${code}`);
+                        break;
+                    }
+
+                    if (status.state === 'verificationTimedOut' || status.state === 'cancelled') {
+                        throw new Error("SMS Verification Timed Out/Cancelled");
+                    }
+                }
+
+                if (!code) throw new Error("SMS Timeout (No code received)");
+
+                // D. Enter Code
+                console.log(`⌨️ Entering Code: ${code}`);
+                const codeInputSelector = 'input[aria-label="Verification code"], input[name="code"], input[autocomplete="one-time-code"]';
+                try {
+                    await page.waitForSelector(codeInputSelector, { timeout: 10000 });
+                    await page.type(codeInputSelector, code, { delay: 100 });
+                } catch {
+                    console.log('⚠️ Could not find specific code input, typing into first visible input.');
+                    await page.keyboard.type(code);
+                }
+
+                // E. Submit
+                await new Promise(r => setTimeout(r, 500));
+                await this.clickButtonByText(page, 'Verify', 5000)
+                    .catch(() => this.clickButtonByText(page, 'Submit', 5000))
+                    .catch(() => this.clickButtonByText(page, 'Continue', 5000));
             }
 
             // 6. Success -> Export

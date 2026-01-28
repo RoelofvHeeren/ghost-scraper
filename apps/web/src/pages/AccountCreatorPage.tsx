@@ -12,7 +12,8 @@ export function AccountCreatorPage() {
         lat: 28.0360,
         lng: -82.6060,
         firstName: '',
-        lastName: ''
+        lastName: '',
+        password: ''
     });
 
     const createMutation = useMutation({
@@ -45,6 +46,41 @@ export function AccountCreatorPage() {
                     <h3 className="text-lg font-semibold flex items-center gap-2">
                         <User className="w-5 h-5 text-purple-400" /> Identity
                     </h3>
+
+                    {/* Name & Password */}
+                    <div className="grid grid-cols-3 gap-4">
+                        <div className="space-y-2">
+                            <label className="text-sm text-zinc-400">First Name</label>
+                            <input
+                                type="text"
+                                placeholder="Random"
+                                value={formData.firstName}
+                                onChange={e => setFormData({ ...formData, firstName: e.target.value })}
+                                className="w-full bg-black/50 border border-zinc-700 rounded p-2 focus:ring-2 focus:ring-green-500/50 outline-none"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm text-zinc-400">Last Name</label>
+                            <input
+                                type="text"
+                                placeholder="Random"
+                                value={formData.lastName}
+                                onChange={e => setFormData({ ...formData, lastName: e.target.value })}
+                                className="w-full bg-black/50 border border-zinc-700 rounded p-2 focus:ring-2 focus:ring-green-500/50 outline-none"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm text-zinc-400">Password</label>
+                            <input
+                                type="text"
+                                placeholder="Random if empty"
+                                value={formData.password}
+                                onChange={e => setFormData({ ...formData, password: e.target.value })}
+                                className="w-full bg-black/50 border border-zinc-700 rounded p-2 focus:ring-2 focus:ring-green-500/50 outline-none"
+                            />
+                        </div>
+                    </div>
+
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                             <label className="text-sm text-zinc-400">Base Email (Gmail Alias)</label>

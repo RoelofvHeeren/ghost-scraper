@@ -55,6 +55,7 @@ export async function botRoutes(app: FastifyInstance) {
                 lng: z.number(),
                 firstName: z.string().optional(),
                 lastName: z.string().optional(),
+                password: z.string().optional(),
                 textVerifiedApiKey: z.string().optional()
             })
         }
