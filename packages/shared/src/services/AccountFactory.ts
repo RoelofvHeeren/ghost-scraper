@@ -37,6 +37,7 @@ export class AccountFactory {
 
     private options?: CreateOptions;
     private currentStepName: string = 'Initializing';
+    private isManualControl: boolean = false;
 
     private log(msg: string) {
         console.log(msg);
@@ -62,7 +63,16 @@ export class AccountFactory {
 
     public async handleRemoteClick(x: number, y: number) {
         if (this.page) {
-            this.log(`🖱️ Remote Click Received: ${x}, ${y}`);
+            this.isManualControl = true;
+            this.log(`🖱️ Remote Click Received: ${x}, ${y}. Automation paused for 30s.`);
+
+            // Auto-resume after 30s
+            setTimeout(() => {
+                this.isManualControl = false;
+                this.log('🤖 Manual control expired. Resuming automation...');
+            }, 30000);
+
+            this.log(`🖱️ Executing remote click: ${x}, ${y}`);
 
             // Try to identify the element before clicking
             try {
@@ -170,6 +180,10 @@ export class AccountFactory {
 
                 if (selector) {
                     await this.page.waitForSelector(selector, { timeout: 3000 });
+                    await this.page.evaluate((s: string) => {
+                        const el = document.querySelector(s);
+                        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }, selector);
                     await this.page.click(selector);
                     return;
                 } else if (learned.type === 'text') {
@@ -229,6 +243,7 @@ export class AccountFactory {
         await context.overridePermissions('https://nextdoor.com', ['geolocation']);
 
         this.page = await this.browser.newPage();
+        await this.page.setViewport({ width: 1280, height: 1200 }); // Larger viewport to see all buttons
         await this.page.authenticate({ username: proxyUrl.username, password: proxyUrl.password });
 
         // GPS Spoofing & Timezone Hardening
@@ -263,6 +278,24 @@ export class AccountFactory {
 
             // Click "Continue"
             await this.smartClick('Continue');
+            await this.humanDelay(2000, 4000); // Wait for transition
+            await this.capture(this.page);
+
+            // STAGE SYNC: Only proceed if Step 1 is actually gone or next step is visible
+            let credentialsGone = false;
+            for (let i = 0; i < 5; i++) {
+                if (!(await this.page.$('input[aria-label="Email address"]'))) {
+                    credentialsGone = true;
+                    break;
+                }
+                this.log('⏳ Waiting for Credentials step to clear...');
+                await this.humanDelay(2000);
+                // If user took control, we wait here indefinitely
+                while (this.isManualControl) {
+                    await this.humanDelay(1000);
+                    await this.capture(this.page);
+                }
+            }
 
             // Step 2: Name (If present)
             try {
@@ -321,7 +354,20 @@ export class AccountFactory {
 
             // Click Continue after address
             await new Promise(r => setTimeout(r, 1000)); // Stability wait
-            await this.clickButtonByText('Continue');
+            await this.smartClick('Continue');
+            await this.humanDelay(3000, 5000); // Wait for verification check
+            await this.capture(this.page);
+
+            // STAGE SYNC: Wait for address screen to transition to verification
+            for (let i = 0; i < 5; i++) {
+                if (!(await this.page.$('input[aria-label="Street address"]'))) break;
+                this.log('⏳ Waiting for Address step to clear...');
+                await this.humanDelay(2000);
+                while (this.isManualControl) {
+                    await this.humanDelay(1000);
+                    await this.capture(this.page);
+                }
+            }
 
             // Step 4: Hybrid Verification Check
             this.progress('Verifying Account');
@@ -487,13 +533,16 @@ export class AccountFactory {
         try {
             await this.page.waitForFunction((t: string) => {
                 const buttons = Array.from(document.querySelectorAll('button'));
-                return buttons.some(b => (b as HTMLElement).innerText.includes(t));
+                return buttons.some(b => (b as HTMLElement).innerText.toLowerCase().includes(t.toLowerCase()));
             }, { timeout }, text);
 
             await this.page.evaluate((t: string) => {
                 const buttons = Array.from(document.querySelectorAll('button'));
-                const btn = buttons.find(b => (b as HTMLElement).innerText.includes(t));
-                if (btn) (btn as HTMLElement).click();
+                const btn = buttons.find(b => (b as HTMLElement).innerText.toLowerCase().includes(t.toLowerCase()));
+                if (btn) {
+                    btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    (btn as HTMLElement).click();
+                }
             }, text);
         } catch (e) {
             this.log(`⚠️ Button "${text}" not found within timeout.`);
