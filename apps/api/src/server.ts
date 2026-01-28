@@ -1,4 +1,4 @@
-import dotenv from "dotenv";
+import dotenv from "dotenv"; // Force deploy: Headless fix verification
 import { buildApp } from "./app.js";
 
 dotenv.config({ path: "../../.env" });
