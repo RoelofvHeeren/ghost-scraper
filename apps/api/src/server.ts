@@ -34,6 +34,12 @@ async function main() {
                     await factory.handleRemoteClick(x, y);
                 }
             });
+            socket.on("toggle_manual", async ({ sessionId }) => {
+                const factory = AccountFactory.getInstance(sessionId);
+                if (factory) {
+                    factory.toggleManual();
+                }
+            });
         });
 
         await app.listen({ port: PORT, host: "0.0.0.0" });

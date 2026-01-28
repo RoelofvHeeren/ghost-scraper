@@ -24,6 +24,7 @@ interface CreateOptions {
     onProgress?: (stage: string) => void;
     onLog?: (message: string) => void;
     onScreenshot?: (base64: string) => void;
+    onManualState?: (paused: boolean) => void;
 }
 
 export class AccountFactory {
@@ -61,17 +62,14 @@ export class AccountFactory {
         }
     }
 
+    public toggleManual() {
+        this.isManualControl = !this.isManualControl;
+        this.log(this.isManualControl ? '⏸️ Automation Paused (Manual Override)' : '▶️ Automation Resumed');
+        this.options?.onManualState?.(this.isManualControl);
+    }
+
     public async handleRemoteClick(x: number, y: number) {
         if (this.page) {
-            this.isManualControl = true;
-            this.log(`🖱️ Remote Click Received: ${x}, ${y}. Automation paused for 30s.`);
-
-            // Auto-resume after 30s
-            setTimeout(() => {
-                this.isManualControl = false;
-                this.log('🤖 Manual control expired. Resuming automation...');
-            }, 30000);
-
             this.log(`🖱️ Executing remote click: ${x}, ${y}`);
 
             // Try to identify the element before clicking
@@ -266,7 +264,7 @@ export class AccountFactory {
             // 4. Signup Flow
             this.progress('Navigating to Signup');
             await this.humanDelay(1000, 3000);
-            await this.page.goto('https://nextdoor.com/create-account/', { waitUntil: 'networkidle2' });
+            await this.page.goto('https://nextdoor.com/choose_address/', { waitUntil: 'networkidle2' });
             await this.capture(this.page);
 
             // Step 1: Email & Password
@@ -278,21 +276,32 @@ export class AccountFactory {
 
             // Click "Continue"
             await this.smartClick('Continue');
-            await this.humanDelay(2000, 4000); // Wait for transition
+            await this.humanDelay(3000, 5000); // More time for network transition
             await this.capture(this.page);
 
             // STAGE SYNC: Only proceed if Step 1 is actually gone or next step is visible
-            let credentialsGone = false;
-            for (let i = 0; i < 5; i++) {
-                if (!(await this.page.$('input[aria-label="Email address"]'))) {
-                    credentialsGone = true;
-                    break;
-                }
-                this.log('⏳ Waiting for Credentials step to clear...');
-                await this.humanDelay(2000);
+            this.log('⏳ Synchronizing with next stage...');
+            let settled = false;
+            while (!settled) {
                 // If user took control, we wait here indefinitely
-                while (this.isManualControl) {
+                if (this.isManualControl) {
                     await this.humanDelay(1000);
+                    await this.capture(this.page);
+                    continue;
+                }
+
+                // Check if credentials screen is gone or names screen is present
+                const screenCleared = await this.page.evaluate(() => {
+                    return !document.querySelector('input[aria-label="Email address"]') &&
+                        (document.querySelector('input[aria-label="First name"]') ||
+                            document.querySelector('input[aria-label="Street address"]') ||
+                            window.location.href.includes('choose_address'));
+                });
+
+                if (screenCleared) {
+                    settled = true;
+                } else {
+                    await this.humanDelay(2000);
                     await this.capture(this.page);
                 }
             }
@@ -359,12 +368,23 @@ export class AccountFactory {
             await this.capture(this.page);
 
             // STAGE SYNC: Wait for address screen to transition to verification
-            for (let i = 0; i < 5; i++) {
-                if (!(await this.page.$('input[aria-label="Street address"]'))) break;
-                this.log('⏳ Waiting for Address step to clear...');
-                await this.humanDelay(2000);
-                while (this.isManualControl) {
+            this.log('⏳ Verifying stage transition...');
+            let addressCleared = false;
+            while (!addressCleared) {
+                if (this.isManualControl) {
                     await this.humanDelay(1000);
+                    await this.capture(this.page);
+                    continue;
+                }
+
+                const cleared = await this.page.evaluate(() => {
+                    return !document.querySelector('input[aria-label="Street address"]');
+                });
+
+                if (cleared) {
+                    addressCleared = true;
+                } else {
+                    await this.humanDelay(2000);
                     await this.capture(this.page);
                 }
             }

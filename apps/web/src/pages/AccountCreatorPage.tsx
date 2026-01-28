@@ -27,6 +27,7 @@ export function AccountCreatorPage() {
     const [screenshot, setScreenshot] = useState<string | null>(null);
     const [currentStep, setCurrentStep] = useState<string>('');
     const [socket, setSocket] = useState<Socket | null>(null);
+    const [isManualMode, setIsManualMode] = useState(false);
 
     useEffect(() => {
         const s = io(API_BASE_URL);
@@ -37,11 +38,18 @@ export function AccountCreatorPage() {
         s.on('step_update', (step: string) => setCurrentStep(step));
         s.on('log', (msg: string) => setLogs(prev => [...prev.slice(-49), msg]));
         s.on('screenshot', (b64: string) => setScreenshot(b64));
+        s.on('manual_state', (state: boolean) => setIsManualMode(state));
 
         return () => {
             s.disconnect();
         };
     }, []);
+
+    const onToggleManual = () => {
+        if (socket && sessionId) {
+            socket.emit('toggle_manual', { sessionId });
+        }
+    };
 
     const [isGeocoding, setIsGeocoding] = useState(false);
 
@@ -52,6 +60,7 @@ export function AccountCreatorPage() {
             setLogs(['🚀 Initializing factory session...']);
             setCurrentStep('Initializing');
             setScreenshot(null);
+            setIsManualMode(false);
 
             if (socket) {
                 socket.emit('join_bot_session', sid);
@@ -272,6 +281,8 @@ export function AccountCreatorPage() {
                         screenshot={screenshot}
                         currentStep={currentStep}
                         isProcessing={createMutation.isPending}
+                        isManualMode={isManualMode}
+                        onToggleManual={onToggleManual}
                         onRemoteClick={(x, y) => {
                             if (socket && sessionId) {
                                 socket.emit('remote_click', { sessionId, x, y });

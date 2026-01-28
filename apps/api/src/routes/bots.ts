@@ -91,6 +91,9 @@ export async function botRoutes(app: FastifyInstance) {
                 },
                 onScreenshot: (base64) => {
                     if (data.sessionId) emitToSession(data.sessionId, 'screenshot', base64);
+                },
+                onManualState: (paused) => {
+                    if (data.sessionId) emitToSession(data.sessionId, 'manual_state', paused);
                 }
             });
             return { status: "SUCCESS", message: "Bot created successfully" };
