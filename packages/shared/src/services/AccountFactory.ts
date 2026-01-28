@@ -45,11 +45,12 @@ export class AccountFactory {
         // 3. Launch with Proxy
         const proxyUrl = new URL(req.proxy);
         const browser = await puppeteer.launch({
-            headless: false, // Visible for now
+            headless: process.env.NODE_ENV === 'production', // Headless in production, visible locally
             executablePath: executablePath(),
             args: [
                 `--proxy-server=${proxyUrl.hostname}:${proxyUrl.port}`,
                 '--no-sandbox',
+                '--disable-setuid-sandbox',
                 '--lang=en-US'
             ]
         });

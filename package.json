@@ -34,6 +34,7 @@
     "ioredis": "^5.9.2",
     "lucide-react": "^0.562.0",
     "openai": "^6.16.0",
+    "pg": "^8.17.2",
     "playwright": "^1.57.0",
     "prisma": "6.2.1",
     "react-router-dom": "^7.12.0",
