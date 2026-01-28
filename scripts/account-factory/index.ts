@@ -1,100 +1,46 @@
-
-import puppeteer from 'puppeteer-extra';
-import StealthPlugin from 'puppeteer-extra-plugin-stealth';
-import fs from 'fs';
-import readline from 'readline';
-import { executablePath } from 'puppeteer';
-
-puppeteer.use(StealthPlugin());
-
-// Configuration
-const ACCOUNTS_FILE = 'accounts.csv'; // Format: email,password,firstName,lastName,address
-const PROXIES_FILE = 'proxies.txt';   // Format: http://user:pass@host:port
-const OUTPUT_DIR = './sessions';
-
-if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
-
-const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout
-});
-
-const askQuestion = (query: string): Promise<string> => {
-    return new Promise(resolve => rl.question(query, resolve));
-};
-
-async function createAccount(account: any, proxy: string) {
-    console.log(`\n🚀 Starting creation for ${account.email} on proxy ${proxy}...`);
-
-    // Parse proxy for puppeteer (remove http://)
-    const proxyUrl = new URL(proxy);
-
-    const browser = await puppeteer.launch({
-        headless: false, // Must be visible to debug and solve captchas if needed
-        executablePath: executablePath(),
-        args: [
-            `--proxy-server=${proxyUrl.hostname}:${proxyUrl.port}`,
-            '--no-sandbox',
-            '--disable-setuid-sandbox'
-        ]
-    });
-
-    const page = await browser.newPage();
-
-    // Authenticate proxy
-    await page.authenticate({
-        username: proxyUrl.username,
-        password: proxyUrl.password
-    });
-
-    try {
-        // 1. Check IP
-        await page.goto('https://api.ipify.org?format=json');
-        const content = await page.content();
-        console.log(`   ✅ Proxy IP Verified: ${content.match(/\d+\.\d+\.\d+\.\d+/)?.[0]}`);
-
-        // 2. Go to Nextdoor
-        await page.goto('https://nextdoor.com/signup/', { waitUntil: 'networkidle2' });
-
-        // 3. Fill Form
-        console.log("   ✍️  Filling signup form...");
-        // Selectors might change, generic placeholder logic here
-        // await page.type('input[name="email"]', account.email);
-        // await page.type('input[name="password"]', account.password);
-        // ... implementation needed based on exact DOM
-
-        // PAUSE FOR MANUAL INTERVENTION (OR API)
-        console.log("   ⚠️  Please manually fill the form/captcha in the browser window.");
-        console.log("   ⚠️  When you reach the 'Verify Phone' step, enter your TextVerified number.");
-        await askQuestion("   PRESS ENTER when you have fully verified the account and are on the feed...");
-
-        // 4. Export Cookies
-        const cookies = await page.cookies();
-        const sessionFile = `${OUTPUT_DIR}/${account.email}.json`;
-        fs.writeFileSync(sessionFile, JSON.stringify(cookies, null, 2));
-        console.log(`   💾 Session saved to ${sessionFile}`);
-
-    } catch (e) {
-        console.error(`   ❌ Failed: ${e}`);
-    } finally {
-        await browser.close();
-    }
-}
+import { AccountFactory } from '../../packages/shared/src/services/AccountFactory.js';
+import dotenv from 'dotenv';
+dotenv.config();
 
 async function main() {
-    const proxies = fs.readFileSync(PROXIES_FILE, 'utf-8').split('\n').filter(Boolean);
-    const accounts = fs.readFileSync(ACCOUNTS_FILE, 'utf-8').split('\n').filter(Boolean);
+    const factory = new AccountFactory();
 
-    console.log(`Loaded ${accounts.length} accounts and ${proxies.length} proxies.`);
+    // 🟢 Configuration for the Test Run
+    // You can edit these values directly effectively.
 
-    for (let i = 0; i < accounts.length; i++) {
-        const [email, password, first, last, address] = accounts[i].split(',');
-        const proxy = proxies[i % proxies.length]; // Rotate proxies
+    const TARGET_ADDRESS = "9012 Grand Bayou Ct, Tampa, FL 33635";
+    const TARGET_GPS = { lat: 28.0360, lng: -82.6060 }; // Coordinates of the address
 
-        await createAccount({ email, password, first, last, address }, proxy);
+    // Using a test proxy (Replace with one from your list if needed)
+    // Format: http://user:pass@host:port
+    const PROXY = process.env.TEST_PROXY || "http://ResidentialUser:Pass@ip:port";
+
+    const TEXT_VERIFIED_KEY = process.env.TEXT_VERIFIED_API_KEY!;
+
+    if (!TEXT_VERIFIED_KEY) {
+        console.error("❌ Missing TEXT_VERIFIED_API_KEY in .env");
+        process.exit(1);
     }
 
-    rl.close();
+    console.log("🚀 Launching Account Factory Test...");
+    console.log(`📍 Target: ${TARGET_ADDRESS} (${TARGET_GPS.lat}, ${TARGET_GPS.lng})`);
+
+    try {
+        await factory.createBot({
+            baseEmail: "roelof818@gmail.com", // Base for alias (roelof818+test1234@gmail.com)
+            proxy: PROXY,
+            textVerifiedApiKey: TEXT_VERIFIED_KEY,
+            firstName: "Roelof", // Optional, random if omitted
+            lastName: "Test",
+            address: TARGET_ADDRESS,
+            latitude: TARGET_GPS.lat,
+            longitude: TARGET_GPS.lng
+        });
+
+        console.log("✅ Test Run Complete!");
+    } catch (error) {
+        console.error("❌ Test Run Failed:", error);
+    }
 }
 
 main();

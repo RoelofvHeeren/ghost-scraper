@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation } from "react-router-dom";
-import { LayoutDashboard, Users, Map, Settings, Activity, Sparkles, Terminal } from "lucide-react";
+import { LayoutDashboard, Users, Map, Settings, Activity, Sparkles, Terminal, Factory } from "lucide-react";
 import clsx from "clsx";
 
 const navItems = [
@@ -7,6 +7,7 @@ const navItems = [
     { href: "/clients", label: "Clients", icon: Users },
     { href: "/sources", label: "Sources", icon: Map },
     { href: "/accounts", label: "Bot Accounts", icon: Activity },
+    { href: "/factory", label: "Bot Factory", icon: Factory }, // New
     { href: "/simulator", label: "Simulator", icon: Terminal },
     { href: "/settings", label: "Settings", icon: Settings },
 ];

@@ -9,6 +9,7 @@ import { CampaignsPage } from "./pages/CampaignsPage";
 import { GhostScraperPage } from "./pages/GhostScraperPage";
 import { SourcesPage } from "./pages/SourcesPage";
 import { BotAccountsPage } from "./pages/BotAccountsPage";
+import { AccountCreatorPage } from "./pages/AccountCreatorPage";
 import { SettingsPage } from "./pages/SettingsPage";
 
 import { Component, ErrorInfo, ReactNode } from "react";
@@ -69,6 +70,7 @@ function App() {
                             <Route path="/clients" element={<ClientsPage />} />
                             <Route path="/sources" element={<SourcesPage />} />
                             <Route path="/accounts" element={<BotAccountsPage />} />
+                            <Route path="/factory" element={<AccountCreatorPage />} />
                             <Route path="/simulator" element={<SimulatorPage />} />
                             <Route path="/campaigns" element={<CampaignsPage />} />
                             <Route path="/ghost-scraper" element={<GhostScraperPage />} />
