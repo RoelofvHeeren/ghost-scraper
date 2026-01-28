@@ -240,61 +240,76 @@ export class AccountFactory {
             AccountFactory.instances.set(req.sessionId, this);
         }
 
-        // 1. Generate Identity
-        this.progress('Generating Identity');
-        const first = req.firstName || this.getRandom(this.firstNames);
-        const last = req.lastName || this.getRandom(this.lastNames);
-        const randomDigits = Math.floor(Math.random() * 900) + 100;
-
-        // Smart Email Alias: base+first999@gmail.com
-        const [user, domain] = req.baseEmail.split('@');
-        const email = `${user}+${first.toLowerCase()}${randomDigits}@${domain}`;
-        const password = req.password || `Pass${Math.random().toString(36).slice(-8)}!`;
-
-        this.log(`🏭 Starting Factory for: ${first} ${last} (${email})`);
-
-        // 2. Prep API
-        const smsService = new TextVerifiedService(req.textVerifiedApiKey);
-
-        // 3. Launch with Proxy
-        this.progress('Launching Browser');
-        const proxyUrl = new URL(req.proxy);
-        this.browser = await puppeteer.launch({
-            headless: process.env.NODE_ENV !== 'development', // Default to headless unless strictly development
-            executablePath: executablePath(),
-            args: [
-                `--proxy-server=${proxyUrl.hostname}:${proxyUrl.port}`,
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--lang=en-US'
-            ]
-        });
-
-        // Use default context for permission overrides if needed
-        const context = this.browser.defaultBrowserContext();
-        await context.overridePermissions('https://nextdoor.com', ['geolocation']);
-
-        this.page = await this.browser.newPage();
-        await this.page.setViewport({ width: 1280, height: 2000 }); // Even larger viewport to see everything
-        await this.page.authenticate({ username: proxyUrl.username, password: proxyUrl.password });
-
-        // GPS Spoofing & Timezone Hardening
-        if (req.latitude && req.longitude) {
-            await this.page.setGeolocation({ latitude: req.latitude, longitude: req.longitude });
-            // Default to East Coast/Tampa if not specialized
-            await this.page.emulateTimezone('America/New_York').catch(() => { });
-            this.log(`📍 GPS & Timezone Spoofed: ${req.latitude}, ${req.longitude} (America/New_York)`);
-        }
-
-        // WebRTC Blocking (Prevent IP leakage)
-        await this.page.evaluateOnNewDocument(() => {
-            // @ts-ignore
-            delete window.navigator.rtcPeerConnection;
-            // @ts-ignore
-            delete window.navigator.rtcIceGatherer;
-        });
-
         try {
+            // 1. Generate Identity
+            this.progress('Generating Identity');
+            this.log('📝 [DEBUG] Step 1: Generating identity data');
+            const first = req.firstName || this.getRandom(this.firstNames);
+            const last = req.lastName || this.getRandom(this.lastNames);
+            const randomDigits = Math.floor(Math.random() * 900) + 100;
+
+            const [user, domain] = req.baseEmail.split('@');
+            const email = `${user}+${first.toLowerCase()}${randomDigits}@${domain}`;
+            const password = req.password || `Pass${Math.random().toString(36).slice(-8)}!`;
+
+            this.log(`🏭 Starting Factory for: ${first} ${last} (${email})`);
+
+            // 2. Prep API
+            this.log('🔑 [DEBUG] Step 2: Initializing SMS Service');
+            const smsService = new TextVerifiedService(req.textVerifiedApiKey);
+
+            // 3. Launch Browser
+            this.progress('Launching Browser');
+            this.log(`🌐 [DEBUG] Step 3: Launching browser through proxy...`);
+
+            const proxyUrl = new URL(req.proxy);
+
+            this.log('🚀 [DEBUG] Calling puppeteer.launch...');
+            this.browser = await puppeteer.launch({
+                headless: true, // boolean is correct for Puppeteer 22+
+                executablePath: executablePath(),
+                protocolTimeout: 60000,
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-web-security',
+                    '--disable-features=IsolateOrigins,site-per-process',
+                    `--proxy-server=${proxyUrl.origin}`,
+                    '--disable-notifications',
+                    '--disable-geolocation',
+                    '--window-size=1280,2000'
+                ]
+            });
+            this.log('✅ [DEBUG] Browser launched successfully');
+
+            this.log('📄 [DEBUG] Creating new context and page...');
+            const context = await this.browser.createBrowserContext();
+            await context.overridePermissions('https://nextdoor.com', ['geolocation']);
+
+            this.page = await context.newPage();
+            this.log('✅ [DEBUG] Page created in authorized context');
+
+            await this.page.authenticate({ username: proxyUrl.username, password: proxyUrl.password });
+            this.log('✅ [DEBUG] Proxy authenticated');
+
+            await this.page.setViewport({ width: 1280, height: 2000 });
+            this.log('✅ [DEBUG] Viewport set to 2000px');
+
+            // GPS Spoofing & Timezone Hardening
+            if (req.latitude && req.longitude) {
+                await this.page.setGeolocation({ latitude: req.latitude, longitude: req.longitude });
+                await this.page.emulateTimezone('America/New_York').catch(() => { });
+                this.log(`📍 GPS & Timezone Spoofed: ${req.latitude}, ${req.longitude}`);
+            }
+
+            // WebRTC Blocking
+            await this.page.evaluateOnNewDocument(() => {
+                // @ts-ignore
+                delete window.navigator.rtcPeerConnection;
+                // @ts-ignore
+                delete window.navigator.rtcIceGatherer;
+            });
+
             // 4. Signup Flow
             this.progress('Navigating to Signup');
             await this.humanDelay(1000, 3000);
@@ -314,21 +329,19 @@ export class AccountFactory {
 
             // Click "Continue"
             await this.smartClick('Continue');
-            await this.humanDelay(3000, 5000); // More time for network transition
+            await this.humanDelay(3000, 5000);
             await this.capture(this.page);
 
-            // STAGE SYNC: Only proceed if Step 1 is actually gone or next step is visible
+            // STAGE SYNC
             this.log('⏳ Synchronizing with next stage...');
             let settled = false;
             while (!settled) {
-                // If user took control, we wait here indefinitely
                 if (this.isManualControl) {
                     await this.humanDelay(1000);
                     await this.capture(this.page);
                     continue;
                 }
 
-                // Check if credentials screen is gone or names screen is present
                 const screenCleared = await this.page.evaluate(() => {
                     return !document.querySelector('input[aria-label="Email address"]') &&
                         (document.querySelector('input[aria-label="First name"]') ||
@@ -344,67 +357,57 @@ export class AccountFactory {
                 }
             }
 
-            // Step 2: Name (If present)
+            // Step 2: Name
             try {
                 this.progress('Checking for Name Fields');
-                // Wait for either the name field OR the address field to appear
                 await Promise.race([
                     this.page.waitForSelector('input[aria-label="First name"]', { timeout: 8000 }),
                     this.page.waitForSelector('input[aria-label="Street address"]', { timeout: 8000 })
                 ]);
 
                 if (await this.page.$('input[aria-label="First name"]')) {
+                    await this.waitWhilePaused();
                     await this.page.type('input[aria-label="First name"]', first, { delay: 50 });
+                    await this.waitWhilePaused();
                     await this.page.type('input[aria-label="Last name"]', last, { delay: 50 });
                     await this.capture(this.page);
                     await this.smartClick('Continue');
                 }
             } catch (e) {
-                this.log('ℹ️ Name step skipped or not found (proceeding).');
+                this.log('ℹ️ Name step skipped or not found.');
             }
 
             // Step 3: Address
             this.progress('Handling Address');
-            // Wait for address input to be definitely visible
             await this.page.waitForSelector('input[aria-label="Street address"]', { timeout: 15000 });
 
-            // Handle "Type address instead" if Geolocation prompt appears
             try {
                 await this.smartClick('Type address instead', 3000);
             } catch {
-                this.log('ℹ️ "Type address instead" button not found, assuming direct input.');
+                this.log('ℹ️ Assuming direct input.');
             }
 
-            // Fill Address (Manually)
-            const address = req.address || "9012 Grand Bayou Ct, Tampa, FL 33635";
-
-            // Wait for street address input via aria-label
+            const addressStr = req.address || "9012 Grand Bayou Ct, Tampa, FL 33635";
             await this.page.waitForSelector('input[aria-label="Street address"]');
-
             await this.waitWhilePaused();
-            await this.page.type('input[aria-label="Street address"]', address, { delay: 50 });
+            await this.page.type('input[aria-label="Street address"]', addressStr, { delay: 50 });
             await this.capture(this.page);
 
-            // Wait for dropdown suggestion
-            const streetPart = address.split(',')[0]; // "9012 Grand Bayou Ct"
-            this.log(`Waiting for address suggestion matching: ${streetPart}`);
-
+            const streetPart = addressStr.split(',')[0];
             await this.page.waitForFunction((text: string) => {
                 const els = Array.from(document.querySelectorAll('div[role="button"]'));
                 return els.some(el => (el as HTMLElement).innerText.includes(text));
             }, {}, streetPart);
 
-            // Click the suggestion
             await this.page.evaluate((text: string) => {
                 const els = Array.from(document.querySelectorAll('div[role="button"]'));
                 const suggestion = els.find(el => (el as HTMLElement).innerText.includes(text));
                 if (suggestion) (suggestion as HTMLElement).click();
             }, streetPart);
 
-            // Click Continue after address
-            await new Promise(r => setTimeout(r, 1000)); // Stability wait
+            await new Promise(r => setTimeout(r, 1000));
             await this.smartClick('Continue');
-            await this.humanDelay(3000, 5000); // Wait for verification check
+            await this.humanDelay(3000, 5000);
             await this.capture(this.page);
 
             // STAGE SYNC: Wait for address screen to transition to verification
@@ -429,73 +432,38 @@ export class AccountFactory {
                 }
             }
 
-            // Step 4: Hybrid Verification Check
+            // Step 4: Verification
             this.progress('Verifying Account');
             this.log('🤔 Checking next step: Phone, GPS Verify, or Success...');
             await this.capture(this.page);
 
             const verifySelector = 'input[aria-label="Mobile number"]';
-            // Button often says "Verify with current address" or similar
-            // We'll perform a text search for buttons
-
             let verificationAction = 'WAIT';
             let retries = 0;
 
             while (verificationAction === 'WAIT' && retries < 20) {
                 await new Promise(r => setTimeout(r, 1000));
                 retries++;
-
-                // 1. Check for Phone Input
-                if (await this.page.$(verifySelector)) {
-                    verificationAction = 'PHONE';
-                    break;
-                }
-
-                // 2. Check for "Verify with current address" specific button
+                if (await this.page.$(verifySelector)) { verificationAction = 'PHONE'; break; }
                 const gpsButtonFound = await this.page.evaluate(() => {
                     const buttons = Array.from(document.querySelectorAll('button'));
-                    return buttons.some(b =>
-                        b.innerText.toLowerCase().includes('current address') ||
-                        b.innerText.toLowerCase().includes('verify location')
-                    );
+                    return buttons.some(b => b.innerText.toLowerCase().includes('current address') || b.innerText.toLowerCase().includes('verify location'));
                 });
-
-                if (gpsButtonFound) {
-                    verificationAction = 'GPS_BUTTON';
-                    break;
-                }
-
-                // 3. Check for Feed (Success)
-                // If url contains 'news_feed' or we see feed container
-                if (this.page.url().includes('news_feed') || await this.page.$('div[data-testid="feed-container"]')) {
-                    verificationAction = 'SUCCESS';
-                    break;
-                }
+                if (gpsButtonFound) { verificationAction = 'GPS_BUTTON'; break; }
+                if (this.page.url().includes('news_feed') || await this.page.$('div[data-testid="feed-container"]')) { verificationAction = 'SUCCESS'; break; }
             }
 
             if (verificationAction === 'SUCCESS') {
-                this.log('🎉 AMAZING! Auto-verified by address match.');
-            }
-            else if (verificationAction === 'GPS_BUTTON') {
-                this.log('📍 "Verify with current address" button found! Clicking it...');
-                // Click the button that contains "current address" or "verify location"
+                this.log('🎉 Auto-verified by address match.');
+            } else if (verificationAction === 'GPS_BUTTON') {
+                this.log('📍 GPS Verification button found! Clicking...');
                 await this.page.evaluate(() => {
                     const buttons = Array.from(document.querySelectorAll('button'));
-                    const btn = buttons.find(b =>
-                        b.innerText.toLowerCase().includes('current address') ||
-                        b.innerText.toLowerCase().includes('verify location')
-                    );
+                    const btn = buttons.find(b => b.innerText.toLowerCase().includes('current address') || b.innerText.toLowerCase().includes('verify location'));
                     if (btn) (btn as HTMLElement).click();
                 });
                 this.log('🎉 Clicked Address Verification. Assuming success.');
-            }
-            else if (verificationAction === 'TIMEOUT') {
-                this.log('⚠️ Timeline expired. No obvious next step found. Checking one last time...');
-                await this.capture(this.page);
-            }
-
-            // Only do SMS if explicitly PHONE
-            if (verificationAction === 'PHONE') {
+            } else if (verificationAction === 'PHONE') {
                 this.log('📱 Phone Verification required. Proceeding with TextVerified...');
 
                 // A. Request Number
@@ -512,21 +480,12 @@ export class AccountFactory {
                 this.progress('Waiting for SMS Code');
                 this.log('⏳ Waiting for SMS Code...');
                 let code: string | undefined;
-                // Poll for 90 seconds
                 for (let i = 0; i < 30; i++) {
                     await new Promise(r => setTimeout(r, 3000));
                     const status = await smsService.getVerification(verification.id);
                     this.log(`   Poll Status: ${status.state}`);
-
-                    if (status.sms?.code) {
-                        code = status.sms.code;
-                        this.log(`✅ Code Received: ${code}`);
-                        break;
-                    }
-
-                    if (status.state === 'verificationTimedOut' || status.state === 'cancelled') {
-                        throw new Error("SMS Verification Timed Out/Cancelled");
-                    }
+                    if (status.sms?.code) { code = status.sms.code; break; }
+                    if (status.state === 'verificationTimedOut' || status.state === 'cancelled') { throw new Error("SMS Verification Timed Out/Cancelled"); }
                 }
 
                 if (!code) throw new Error("SMS Timeout (No code received)");
@@ -546,14 +505,12 @@ export class AccountFactory {
 
                 // E. Submit
                 await new Promise(r => setTimeout(r, 500));
-                await this.smartClick('Verify', 5000)
-                    .catch(() => this.smartClick('Submit', 5000))
-                    .catch(() => this.smartClick('Continue', 5000));
+                await this.smartClick('Verify', 5000).catch(() => this.smartClick('Submit', 5000)).catch(() => this.smartClick('Continue', 5000));
             }
 
-            // 6. Success -> Export
+            // 6. Finalize
             this.progress('Finalizing Account');
-            await new Promise(r => setTimeout(r, 3000)); // Wait for final settle
+            await new Promise(r => setTimeout(r, 3000));
             const cookies = await this.page.cookies();
             await this.capture(this.page);
 
@@ -575,16 +532,13 @@ export class AccountFactory {
             this.progress('Success');
             this.log(`✅ Bot Created: ${email}`);
 
-        } catch (e) {
-            console.error(`❌ Factory Failed: ${e}`);
-            this.log(`❌ Error: ${e}`);
-            if (this.page) await this.capture(this.page); // Final screenshot on fail
+        } catch (e: any) {
+            this.log(`❌ Error: ${e.message}`);
+            if (this.page) await this.capture(this.page);
             throw e;
         } finally {
             if (this.browser) await this.browser.close();
-            if (req.sessionId) {
-                AccountFactory.instances.delete(req.sessionId);
-            }
+            if (req.sessionId) AccountFactory.instances.delete(req.sessionId);
         }
     }
 
