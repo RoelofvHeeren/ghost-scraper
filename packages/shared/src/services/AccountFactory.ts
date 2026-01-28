@@ -36,6 +36,7 @@ export class AccountFactory {
     }
 
     private options?: CreateOptions;
+    private currentStepName: string = 'Initializing';
 
     private log(msg: string) {
         console.log(msg);
@@ -43,6 +44,7 @@ export class AccountFactory {
     }
 
     private progress(stage: string) {
+        this.currentStepName = stage;
         this.options?.onProgress?.(stage);
         this.log(`➡️ Stage: ${stage}`);
     }
@@ -82,17 +84,50 @@ export class AccountFactory {
                 }, x, y);
 
                 if (elementInfo) {
-                    const identifier = elementInfo.ariaLabel
-                        ? `aria-label="${elementInfo.ariaLabel}"`
-                        : elementInfo.placeholder
-                            ? `placeholder="${elementInfo.placeholder}"`
-                            : elementInfo.id
-                                ? `#${elementInfo.id}`
-                                : elementInfo.innerText
-                                    ? `text="${elementInfo.innerText.trim()}"`
-                                    : `${elementInfo.tagName}.${elementInfo.className.split(' ').join('.')}`;
+                    const type = elementInfo.ariaLabel ? 'aria-label' :
+                        elementInfo.placeholder ? 'placeholder' :
+                            elementInfo.id ? 'id' :
+                                elementInfo.innerText ? 'text' : 'css';
 
-                    this.log(`🎓 TRAINING DATA: Clicked <${elementInfo.tagName}> [${identifier}]`);
+                    const selectorValue = elementInfo.ariaLabel ||
+                        elementInfo.placeholder ||
+                        (elementInfo.id ? `#${elementInfo.id}` : null) ||
+                        elementInfo.innerText?.trim() ||
+                        `${elementInfo.tagName}.${elementInfo.className.split(' ').join('.')}`;
+
+                    this.log(`🎓 TRAINING DATA: Clicked <${elementInfo.tagName}> [${type}="${selectorValue}"]`);
+
+                    if (selectorValue) {
+                        try {
+                            // Associate with the specific button if possible (heuristic)
+                            const target = this.currentStepName.includes('Entering') ? 'Continue' :
+                                this.currentStepName.includes('Address') ? 'Continue' : 'Default';
+
+                            await (prisma as any).learnedSelector.upsert({
+                                where: {
+                                    platform_stepName_selector: {
+                                        platform: 'NEXTDOOR',
+                                        stepName: `${this.currentStepName} - ${target}`,
+                                        selector: selectorValue
+                                    }
+                                },
+                                update: {
+                                    hitCount: { increment: 1 },
+                                    lastUsedAt: new Date()
+                                },
+                                create: {
+                                    platform: 'NEXTDOOR',
+                                    stepName: `${this.currentStepName} - ${target}`,
+                                    selector: selectorValue,
+                                    type: type,
+                                    hitCount: 1,
+                                    lastUsedAt: new Date()
+                                }
+                            });
+                        } catch (dbError) {
+                            this.log(`⚠️ Selector Recording Failed: ${dbError}`);
+                        }
+                    }
                 }
             } catch (e) {
                 // Silently fail element identification
@@ -102,6 +137,51 @@ export class AccountFactory {
             // Capture screenshot after click to show result
             await this.capture(this.page);
         }
+    }
+
+    private async findLearnedSelector(stepName: string) {
+        try {
+            return await (prisma as any).learnedSelector.findFirst({
+                where: {
+                    platform: 'NEXTDOOR',
+                    stepName: stepName
+                },
+                orderBy: {
+                    hitCount: 'desc'
+                }
+            });
+        } catch {
+            return null;
+        }
+    }
+
+    private async smartClick(defaultText: string, timeout = 5000) {
+        if (!this.page) return;
+
+        const learned = await this.findLearnedSelector(`${this.currentStepName} - ${defaultText}`);
+        if (learned) {
+            this.log(`🤖 Mimicking learned action: [${learned.type}="${learned.selector}"]`);
+            try {
+                let selector = '';
+                if (learned.type === 'aria-label') selector = `[aria-label="${learned.selector}"]`;
+                else if (learned.type === 'placeholder') selector = `[placeholder="${learned.selector}"]`;
+                else if (learned.type === 'id') selector = learned.selector;
+                else if (learned.type === 'css') selector = learned.selector;
+
+                if (selector) {
+                    await this.page.waitForSelector(selector, { timeout: 3000 });
+                    await this.page.click(selector);
+                    return;
+                } else if (learned.type === 'text') {
+                    await this.clickButtonByText(learned.selector, 3000);
+                    return;
+                }
+            } catch (e: any) {
+                this.log(`⚠️ Learned action failed, falling back: ${e.message}`);
+            }
+        }
+
+        await this.clickButtonByText(defaultText, timeout);
     }
 
     // Random American Names for fallback
@@ -172,7 +252,7 @@ export class AccountFactory {
             await this.capture(this.page);
 
             // Click "Continue"
-            await this.clickButtonByText('Continue');
+            await this.smartClick('Continue');
 
             // Step 2: Name (If present)
             try {
@@ -187,7 +267,7 @@ export class AccountFactory {
                     await this.page.type('input[aria-label="First name"]', first, { delay: 50 });
                     await this.page.type('input[aria-label="Last name"]', last, { delay: 50 });
                     await this.capture(this.page);
-                    await this.clickButtonByText('Continue');
+                    await this.smartClick('Continue');
                 }
             } catch (e) {
                 this.log('ℹ️ Name step skipped or not found (proceeding).');
@@ -200,7 +280,7 @@ export class AccountFactory {
 
             // Handle "Type address instead" if Geolocation prompt appears
             try {
-                await this.clickButtonByText('Type address instead', 3000);
+                await this.smartClick('Type address instead', 3000);
             } catch {
                 this.log('ℹ️ "Type address instead" button not found, assuming direct input.');
             }
@@ -310,7 +390,7 @@ export class AccountFactory {
 
                 // B. Input Number
                 await this.page.type('input[aria-label="Mobile number"]', verification.number, { delay: 50 });
-                await this.clickButtonByText('Text me a code');
+                await this.smartClick('Text me a code');
 
                 // C. Poll for Code
                 this.progress('Waiting for SMS Code');
@@ -350,9 +430,9 @@ export class AccountFactory {
 
                 // E. Submit
                 await new Promise(r => setTimeout(r, 500));
-                await this.clickButtonByText('Verify', 5000)
-                    .catch(() => this.clickButtonByText('Submit', 5000))
-                    .catch(() => this.clickButtonByText('Continue', 5000));
+                await this.smartClick('Verify', 5000)
+                    .catch(() => this.smartClick('Submit', 5000))
+                    .catch(() => this.smartClick('Continue', 5000));
             }
 
             // 6. Success -> Export

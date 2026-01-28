@@ -271,3 +271,19 @@ model Settings {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+model LearnedSelector {
+  id          String   @id @default(cuid())
+  platform    SourceType
+  stepName    String   // e.g., "Entering Credentials", "Handling Address"
+  selector    String   // The CSS selector or attribute identifier
+  type        String   // "aria-label", "placeholder", "id", "text", "css"
+  
+  hitCount    Int      @default(0) // How many times this selector worked
+  lastUsedAt  DateTime?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([platform, stepName, selector])
+}
