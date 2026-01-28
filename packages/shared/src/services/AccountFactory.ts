@@ -61,9 +61,46 @@ export class AccountFactory {
     public async handleRemoteClick(x: number, y: number) {
         if (this.page) {
             this.log(`🖱️ Remote Click Received: ${x}, ${y}`);
-            // Calculate screen coordinates (Puppeteer uses pixels, we get percentage or relative usually)
-            // But for now let's assume raw pixels if the frontend sends them correctly or just 1:1
+
+            // Try to identify the element before clicking
+            try {
+                const elementInfo = await this.page.evaluate((ex: number, ey: number) => {
+                    const el = document.elementFromPoint(ex, ey) as HTMLElement;
+                    if (!el) return null;
+
+                    return {
+                        tagName: el.tagName.toLowerCase(),
+                        id: el.id,
+                        innerHtml: el.innerHTML.slice(0, 50),
+                        innerText: el.innerText.slice(0, 50),
+                        ariaLabel: el.getAttribute('aria-label'),
+                        name: el.getAttribute('name'),
+                        placeholder: el.getAttribute('placeholder'),
+                        role: el.getAttribute('role'),
+                        className: el.className
+                    };
+                }, x, y);
+
+                if (elementInfo) {
+                    const identifier = elementInfo.ariaLabel
+                        ? `aria-label="${elementInfo.ariaLabel}"`
+                        : elementInfo.placeholder
+                            ? `placeholder="${elementInfo.placeholder}"`
+                            : elementInfo.id
+                                ? `#${elementInfo.id}`
+                                : elementInfo.innerText
+                                    ? `text="${elementInfo.innerText.trim()}"`
+                                    : `${elementInfo.tagName}.${elementInfo.className.split(' ').join('.')}`;
+
+                    this.log(`🎓 TRAINING DATA: Clicked <${elementInfo.tagName}> [${identifier}]`);
+                }
+            } catch (e) {
+                // Silently fail element identification
+            }
+
             await this.page.mouse.click(x, y);
+            // Capture screenshot after click to show result
+            await this.capture(this.page);
         }
     }
 
