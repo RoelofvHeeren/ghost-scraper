@@ -170,11 +170,23 @@ export class AccountFactory {
 
     public async handleRemoteKey(key: string) {
         if (this.page) {
-            if (key === 'Backspace') await this.page.keyboard.press('Backspace');
-            else if (key === 'Enter') await this.page.keyboard.press('Enter');
-            else if (key === 'Tab') await this.page.keyboard.press('Tab');
-            else if (key.length === 1) await this.page.keyboard.type(key);
-            await this.capture(this.page);
+            this.log(`⌨️ Remote key: ${key}`);
+            try {
+                if (key === 'Backspace') await this.page.keyboard.press('Backspace');
+                else if (key === 'Enter') await this.page.keyboard.press('Enter');
+                else if (key === 'Tab') await this.page.keyboard.press('Tab');
+                else if (key === 'Escape') await this.page.keyboard.press('Escape');
+                else if (key === 'ArrowUp') await this.page.keyboard.press('ArrowUp');
+                else if (key === 'ArrowDown') await this.page.keyboard.press('ArrowDown');
+                else if (key === 'ArrowLeft') await this.page.keyboard.press('ArrowLeft');
+                else if (key === 'ArrowRight') await this.page.keyboard.press('ArrowRight');
+                else if (key.length === 1) {
+                    await this.page.keyboard.type(key, { delay: 10 });
+                }
+                await this.capture(this.page);
+            } catch (e: any) {
+                this.log(`⚠️ Remote key failed: ${e.message}`);
+            }
         }
     }
 
@@ -320,14 +332,16 @@ export class AccountFactory {
             this.progress('Entering Credentials');
             await this.page.waitForSelector('input[aria-label="Email address"]', { timeout: 15000 });
 
+            this.log(`📧 Typing email: ${email}`);
             await this.waitWhilePaused();
-            await this.page.type('input[aria-label="Email address"]', email, { delay: 50 });
+            await this.page.type('input[aria-label="Email address"]', email, { delay: 100 });
 
+            this.log('🔒 Typing password...');
             await this.waitWhilePaused();
-            await this.page.type('input[aria-label="Create a password"]', password, { delay: 50 });
+            await this.page.type('input[aria-label="Create a password"]', password, { delay: 100 });
             await this.capture(this.page);
 
-            // Click "Continue"
+            this.log('🚀 Clicking Continue...');
             await this.smartClick('Continue');
             await this.humanDelay(3000, 5000);
             await this.capture(this.page);
@@ -366,11 +380,13 @@ export class AccountFactory {
                 ]);
 
                 if (await this.page.$('input[aria-label="First name"]')) {
+                    this.log(`👤 Typing name: ${first} ${last}`);
                     await this.waitWhilePaused();
-                    await this.page.type('input[aria-label="First name"]', first, { delay: 50 });
+                    await this.page.type('input[aria-label="First name"]', first, { delay: 100 });
                     await this.waitWhilePaused();
-                    await this.page.type('input[aria-label="Last name"]', last, { delay: 50 });
+                    await this.page.type('input[aria-label="Last name"]', last, { delay: 100 });
                     await this.capture(this.page);
+                    this.log('🚀 Clicking Continue...');
                     await this.smartClick('Continue');
                 }
             } catch (e) {
@@ -389,8 +405,10 @@ export class AccountFactory {
 
             const addressStr = req.address || "9012 Grand Bayou Ct, Tampa, FL 33635";
             await this.page.waitForSelector('input[aria-label="Street address"]');
+
+            this.log(`🏠 Typing address: ${addressStr}`);
             await this.waitWhilePaused();
-            await this.page.type('input[aria-label="Street address"]', addressStr, { delay: 50 });
+            await this.page.type('input[aria-label="Street address"]', addressStr, { delay: 100 });
             await this.capture(this.page);
 
             const streetPart = addressStr.split(',')[0];

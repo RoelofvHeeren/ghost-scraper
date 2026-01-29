@@ -5,7 +5,7 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "prisma generate --schema=../../prisma/schema.prisma && tsc -b",
+    "build": "prisma generate --schema=../../prisma/schema.prisma && prisma db push --schema=../../prisma/schema.prisma --accept-data-loss && tsc -b",
     "start": "node dist/server.js"
   },
   "dependencies": {
