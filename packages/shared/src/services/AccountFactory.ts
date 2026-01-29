@@ -284,7 +284,7 @@ export class AccountFactory {
             this.progress('Launching Browser');
             this.log(`🌐 [DEBUG] Step 3: Launching browser through proxy...`);
 
-            const proxyUrl = new URL(req.proxy);
+            const proxyUrl = new URL('http://juvgugun:m1c1h51kdgjm@9.142.210.92:5757');
 
             this.log('🚀 [DEBUG] Calling puppeteer.launch...');
             this.browser = await puppeteer.launch({
