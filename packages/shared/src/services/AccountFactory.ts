@@ -257,6 +257,7 @@ export class AccountFactory {
     async createBot(req: AccountRequest & { sessionId?: string }, options?: CreateOptions) {
         this.options = options;
         this.log(`🚀 [BACKEND] createBot started for session: ${req.sessionId}`);
+        this.log('🕵️ [STEALTH] Engine Version: 2.1 (Hardened Click + Metric Sync)');
 
         if (req.sessionId) {
             AccountFactory.instances.set(req.sessionId, this);
@@ -619,41 +620,67 @@ export class AccountFactory {
 
     private async clickButtonByText(text: string, timeout = 5000, waitForNav = false) {
         if (!this.page) return;
+        this.log(`🔍 Searching for button-like element with text: "${text}"`);
         try {
             await this.page.waitForFunction((t: string) => {
-                const buttons = Array.from(document.querySelectorAll('button'));
-                return buttons.some(b => (b as HTMLElement).innerText.toLowerCase().includes(t.toLowerCase()));
+                const search = t.toLowerCase();
+                const elements = Array.from(document.querySelectorAll('button, div, span, [role="button"]'));
+                return elements.some(el => {
+                    const textContent = (el as HTMLElement).innerText?.toLowerCase() || '';
+                    return textContent.includes(search) && (el as HTMLElement).offsetHeight > 0;
+                });
             }, { timeout }, text);
 
             await this.waitWhilePaused();
             await this.page.evaluate((t: string) => {
-                const buttons = Array.from(document.querySelectorAll('button'));
-                const btn = buttons.find(b => (b as HTMLElement).innerText.toLowerCase().includes(t.toLowerCase()));
+                const search = t.toLowerCase();
+                const elements = Array.from(document.querySelectorAll('button, div, span, [role="button"]'));
+                const btn = elements.find(el => {
+                    const textContent = (el as HTMLElement).innerText?.toLowerCase() || '';
+                    return textContent.includes(search) && (el as HTMLElement).offsetHeight > 0;
+                }) as HTMLElement;
+
                 if (btn) {
                     btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    // Store for the mouse click fallback
+                    const rect = btn.getBoundingClientRect();
+                    (window as any).__targetCoords = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
                 }
             }, text);
 
-            await this.humanDelay(500, 1500);
+            await this.humanDelay(800, 1500);
+
+            const coords = await this.page.evaluate(() => (window as any).__targetCoords);
 
             if (waitForNav) {
+                this.log(`🖱️ Clicking "${text}" (expecting navigation)`);
                 await Promise.all([
-                    this.page.waitForNavigation({ waitUntil: 'networkidle2' }).catch(() => { }),
-                    this.page.evaluate((t: string) => {
-                        const buttons = Array.from(document.querySelectorAll('button'));
-                        const btn = buttons.find(b => (b as HTMLElement).innerText.toLowerCase().includes(t.toLowerCase()));
-                        if (btn) (btn as HTMLElement).click();
+                    this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {
+                        this.log('⚠️ Navigation timeout, but proceeding...');
+                    }),
+                    coords ? this.page.mouse.click(coords.x, coords.y) : this.page.evaluate((t: string) => {
+                        const search = t.toLowerCase();
+                        const elements = Array.from(document.querySelectorAll('button, div, span, [role="button"]'));
+                        const btn = elements.find(el => (el as HTMLElement).innerText?.toLowerCase().includes(search)) as HTMLElement;
+                        if (btn) btn.click();
                     }, text)
                 ]);
             } else {
-                await this.page.evaluate((t: string) => {
-                    const buttons = Array.from(document.querySelectorAll('button'));
-                    const btn = buttons.find(b => (b as HTMLElement).innerText.toLowerCase().includes(t.toLowerCase()));
-                    if (btn) (btn as HTMLElement).click();
-                }, text);
+                this.log(`🖱️ Clicking "${text}"`);
+                if (coords) {
+                    await this.page.mouse.move(coords.x, coords.y, { steps: 5 });
+                    await this.page.mouse.click(coords.x, coords.y);
+                } else {
+                    await this.page.evaluate((t: string) => {
+                        const search = t.toLowerCase();
+                        const elements = Array.from(document.querySelectorAll('button, div, span, [role="button"]'));
+                        const btn = elements.find(el => (el as HTMLElement).innerText?.toLowerCase().includes(search)) as HTMLElement;
+                        if (btn) btn.click();
+                    }, text);
+                }
             }
         } catch (e) {
-            this.log(`⚠️ Button "${text}" not found within timeout.`);
+            this.log(`⚠️ Clickable element "${text}" not found within timeout.`);
             throw e;
         }
     }
@@ -711,46 +738,52 @@ export class AccountFactory {
     private async humanType(selector: string, text: string) {
         if (!this.page) return;
         try {
+            this.log(`⌨️ [STEALTH] Starting human type for: ${selector} (${text.length} chars)`);
+            const startTime = Date.now();
+
             await this.page.focus(selector);
-            await this.humanDelay(600, 1200); // Wait before starting
+            await this.humanDelay(800, 1500); // Increased initial wait
 
             for (let i = 0; i < text.length; i++) {
                 const char = text[i];
 
-                // Random Typo (2% chance)
-                if (Math.random() < 0.02 && text.length > 3) {
+                // Random Typo (3% chance)
+                if (Math.random() < 0.03 && text.length > 3) {
                     const keys = 'abcdefghijklmnopqrstuvwxyz';
                     const typo = keys[Math.floor(Math.random() * keys.length)];
                     await this.page.keyboard.type(typo);
-                    await new Promise(r => setTimeout(r, Math.random() * 300 + 200));
+                    await new Promise(r => setTimeout(r, Math.random() * 400 + 300));
                     await this.page.keyboard.press('Backspace');
-                    await new Promise(r => setTimeout(r, Math.random() * 200 + 100));
+                    await new Promise(r => setTimeout(r, Math.random() * 300 + 100));
                 }
 
                 await this.page.keyboard.type(char);
 
-                // Very human timing: 150ms to 450ms
-                let delay = Math.floor(Math.random() * (450 - 150 + 1) + 150);
+                // Very human timing: 180ms to 500ms
+                let delay = Math.floor(Math.random() * (500 - 180 + 1) + 180);
 
                 // Longer pause on spaces or special chars
                 if (char === ' ' || char === '+' || char === '@' || char === '.') {
-                    delay += Math.floor(Math.random() * 800 + 300);
-                    // Might move mouse during a long pause
-                    if (Math.random() > 0.5) await this.humanNoise(1, 0);
+                    delay += Math.floor(Math.random() * 1000 + 400);
+                    if (Math.random() > 0.4) await this.humanNoise(1, 0);
                 }
 
-                // Random "thinking" pause
-                if (i % 7 === 0 && Math.random() > 0.8) {
-                    delay += Math.floor(Math.random() * 1500 + 500);
-                    await this.humanNoise(0, 1);
+                // Random "thinking" pause every ~6 chars
+                if (i > 0 && i % 6 === 0 && Math.random() > 0.75) {
+                    this.log('💭 Thinking pause...');
+                    delay += Math.floor(Math.random() * 2000 + 1000);
+                    await this.humanNoise(1, 1);
                 }
 
                 await new Promise(r => setTimeout(r, delay));
             }
-            await this.humanDelay(800, 1500); // Settling delay
+
+            const duration = (Date.now() - startTime) / 1000;
+            this.log(`✅ [STEALTH] Finished typing into ${selector} in ${duration.toFixed(1)}s`);
+            await this.humanDelay(1000, 2000); // Settling delay
         } catch (e: any) {
             this.log(`⚠️ Human typing failed on ${selector}: ${e.message}`);
-            await this.page.type(selector, text, { delay: 300 }).catch(() => { });
+            await this.page.type(selector, text, { delay: 400 }).catch(() => { });
         }
     }
 }

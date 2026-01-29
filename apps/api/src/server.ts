@@ -11,6 +11,7 @@ const PORT = parseInt(process.env.API_PORT || "8080", 10);
 
 async function main() {
     const app = await buildApp();
+    console.log('🚀 API Server v1.0.3 starting...');
 
     try {
         await app.ready(); // Ensure plugins are loaded
