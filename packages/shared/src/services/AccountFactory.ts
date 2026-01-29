@@ -256,8 +256,8 @@ export class AccountFactory {
             // 1. Generate Identity
             this.progress('Generating Identity');
             this.log('📝 [DEBUG] Step 1: Generating identity data');
-            const first = req.firstName || this.getRandom(this.firstNames);
-            const last = req.lastName || this.getRandom(this.lastNames);
+            const first = (req.firstName || this.getRandom(this.firstNames)) as string;
+            const last = (req.lastName || this.getRandom(this.lastNames)) as string;
             const randomDigits = Math.floor(Math.random() * 900) + 100;
 
             const [user, domain] = req.baseEmail.split('@');
@@ -329,16 +329,13 @@ export class AccountFactory {
             await this.capture(this.page);
 
             // Step 1: Email & Password
-            this.progress('Entering Credentials');
-            await this.page.waitForSelector('input[aria-label="Email address"]', { timeout: 15000 });
-
-            this.log(`📧 Typing email: ${email}`);
+            this.log(`📧 Human-typing email: ${email}`);
             await this.waitWhilePaused();
-            await this.page.type('input[aria-label="Email address"]', email, { delay: 100 });
+            await this.humanType('input[aria-label="Email address"]', email);
 
-            this.log('🔒 Typing password...');
+            this.log('🔒 Human-typing password...');
             await this.waitWhilePaused();
-            await this.page.type('input[aria-label="Create a password"]', password, { delay: 100 });
+            await this.humanType('input[aria-label="Create a password"]', password);
             await this.capture(this.page);
 
             this.log('🚀 Clicking Continue...');
@@ -349,21 +346,31 @@ export class AccountFactory {
             // STAGE SYNC
             this.log('⏳ Synchronizing with next stage...');
             let settled = false;
-            while (!settled) {
+            let syncRetries = 0;
+            while (!settled && syncRetries < 15) {
+                syncRetries++;
                 if (this.isManualControl) {
                     await this.humanDelay(1000);
                     await this.capture(this.page);
                     continue;
                 }
 
-                const screenCleared = await this.page.evaluate(() => {
-                    return !document.querySelector('input[aria-label="Email address"]') &&
-                        (document.querySelector('input[aria-label="First name"]') ||
-                            document.querySelector('input[aria-label="Street address"]') ||
-                            window.location.href.includes('choose_address'));
+                const status = await this.page.evaluate(() => {
+                    const emailInput = document.querySelector('input[aria-label="Email address"]');
+                    const firstNameInput = document.querySelector('input[aria-label="First name"]');
+                    const addressInput = document.querySelector('input[aria-label="Street address"]');
+                    return {
+                        emailVisible: !!emailInput,
+                        nameVisible: !!firstNameInput,
+                        addressVisible: !!addressInput,
+                        url: window.location.href
+                    };
                 });
 
-                if (screenCleared) {
+                this.log(`🔍 Sync Check: Email=${status.emailVisible}, Name=${status.nameVisible}, Address=${status.addressVisible}`);
+
+                if (!status.emailVisible && (status.nameVisible || status.addressVisible || status.url.includes('choose_address'))) {
+                    this.log('✅ Stage Transition detected');
                     settled = true;
                 } else {
                     await this.humanDelay(2000);
@@ -380,11 +387,11 @@ export class AccountFactory {
                 ]);
 
                 if (await this.page.$('input[aria-label="First name"]')) {
-                    this.log(`👤 Typing name: ${first} ${last}`);
+                    this.log(`👤 Human-typing name: ${first} ${last}`);
                     await this.waitWhilePaused();
-                    await this.page.type('input[aria-label="First name"]', first, { delay: 100 });
+                    await this.humanType('input[aria-label="First name"]', first);
                     await this.waitWhilePaused();
-                    await this.page.type('input[aria-label="Last name"]', last, { delay: 100 });
+                    await this.humanType('input[aria-label="Last name"]', last);
                     await this.capture(this.page);
                     this.log('🚀 Clicking Continue...');
                     await this.smartClick('Continue');
@@ -406,9 +413,9 @@ export class AccountFactory {
             const addressStr = req.address || "9012 Grand Bayou Ct, Tampa, FL 33635";
             await this.page.waitForSelector('input[aria-label="Street address"]');
 
-            this.log(`🏠 Typing address: ${addressStr}`);
+            this.log(`🏠 Human-typing address: ${addressStr}`);
             await this.waitWhilePaused();
-            await this.page.type('input[aria-label="Street address"]', addressStr, { delay: 100 });
+            await this.humanType('input[aria-label="Street address"]', addressStr);
             await this.capture(this.page);
 
             const streetPart = addressStr.split(',')[0];
@@ -590,5 +597,21 @@ export class AccountFactory {
 
     private getRandom(arr: string[]) {
         return arr[Math.floor(Math.random() * arr.length)];
+    }
+
+    private async humanType(selector: string, text: string) {
+        if (!this.page) return;
+        try {
+            await this.page.focus(selector);
+            for (const char of text) {
+                await this.page.keyboard.type(char);
+                const delay = Math.floor(Math.random() * (80 - 40 + 1) + 40); // Slightly faster than user requested for better UX, but still human
+                await new Promise(r => setTimeout(r, delay));
+            }
+        } catch (e: any) {
+            this.log(`⚠️ Human typing failed on ${selector}: ${e.message}`);
+            // Fallback to normal type if focus fails
+            await this.page.type(selector, text, { delay: 100 }).catch(() => { });
+        }
     }
 }

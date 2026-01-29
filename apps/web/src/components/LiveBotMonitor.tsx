@@ -83,7 +83,7 @@ export function LiveBotMonitor({
         onRemoteScroll(Math.round(e.deltaY));
     };
 
-    const handleKeyDown = (e: React.KeyboardEvent) => {
+    const handleKeyDown = (e: KeyboardEvent | React.KeyboardEvent) => {
         if (!isManualMode || !onRemoteType) return;
 
         // Prevent default browser actions (like scrolling with space) while typing to bot
@@ -92,6 +92,22 @@ export function LiveBotMonitor({
         }
         onRemoteType(e.key);
     };
+
+    useEffect(() => {
+        if (!isManualMode) return;
+
+        const handleGlobalKeyDown = (e: KeyboardEvent) => {
+            // Only capture if not typing in some unrelated input on the page
+            const target = e.target as HTMLElement;
+            if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+                return;
+            }
+            handleKeyDown(e);
+        };
+
+        window.addEventListener('keydown', handleGlobalKeyDown);
+        return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+    }, [isManualMode, onRemoteType]);
 
     if (!isProcessing && logs.length === 0) return null;
 
