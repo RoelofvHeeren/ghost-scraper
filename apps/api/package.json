@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "prisma generate --schema=../../prisma/schema.prisma && tsc -b",
-    "start": "prisma db push --schema=../../prisma/schema.prisma --accept-data-loss && node dist/server.js"
+    "start": "node scripts/bootstrap.js && node dist/server.js"
   },
   "dependencies": {
     "@fastify/cors": "^8.5.0",
@@ -17,6 +17,7 @@
     "dotenv": "^16.3.1",
     "fastify": "^4.25.2",
     "fastify-type-provider-zod": "^1.1.9",
+    "pg": "^8.11.3",
     "zod": "^3.22.4"
   },
   "devDependencies": {
