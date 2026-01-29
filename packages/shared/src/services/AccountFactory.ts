@@ -206,7 +206,7 @@ export class AccountFactory {
         }
     }
 
-    private async smartClick(defaultText: string, timeout = 5000) {
+    private async smartClick(defaultText: string, timeout = 5000, waitForNav = false) {
         if (!this.page) return;
 
         const learned = await this.findLearnedSelector(`${this.currentStepName} - ${defaultText}`);
@@ -226,10 +226,18 @@ export class AccountFactory {
                         const el = document.querySelector(s);
                         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     }, selector);
-                    await this.page.click(selector);
+
+                    if (waitForNav) {
+                        await Promise.all([
+                            this.page.waitForNavigation({ waitUntil: 'networkidle2' }).catch(() => { }),
+                            this.page.click(selector)
+                        ]);
+                    } else {
+                        await this.page.click(selector);
+                    }
                     return;
                 } else if (learned.type === 'text') {
-                    await this.clickButtonByText(learned.selector, 3000);
+                    await this.clickButtonByText(learned.selector, 3000, waitForNav);
                     return;
                 }
             } catch (e: any) {
@@ -237,7 +245,7 @@ export class AccountFactory {
             }
         }
 
-        await this.clickButtonByText(defaultText, timeout);
+        await this.clickButtonByText(defaultText, timeout, waitForNav);
     }
 
     // Random American Names for fallback
@@ -339,16 +347,20 @@ export class AccountFactory {
             await this.capture(this.page);
 
             this.log('🚀 Clicking Continue...');
-            await this.smartClick('Continue');
+            await this.smartClick('Continue', 8000, true);
             await this.humanDelay(3000, 5000);
             await this.capture(this.page);
+
+            // Check for bot trap
+            await this.checkForBotTrap();
 
             // STAGE SYNC
             this.log('⏳ Synchronizing with next stage...');
             let settled = false;
             let syncRetries = 0;
-            while (!settled && syncRetries < 15) {
+            while (!settled && syncRetries < 20) {
                 syncRetries++;
+                await this.checkForBotTrap();
                 if (this.isManualControl) {
                     await this.humanDelay(1000);
                     await this.capture(this.page);
@@ -390,11 +402,12 @@ export class AccountFactory {
                     this.log(`👤 Human-typing name: ${first} ${last}`);
                     await this.waitWhilePaused();
                     await this.humanType('input[aria-label="First name"]', first);
+                    await this.humanDelay(1000, 2000);
                     await this.waitWhilePaused();
                     await this.humanType('input[aria-label="Last name"]', last);
                     await this.capture(this.page);
                     this.log('🚀 Clicking Continue...');
-                    await this.smartClick('Continue');
+                    await this.smartClick('Continue', 8000, true);
                 }
             } catch (e) {
                 this.log('ℹ️ Name step skipped or not found.');
@@ -431,7 +444,7 @@ export class AccountFactory {
             }, streetPart);
 
             await new Promise(r => setTimeout(r, 1000));
-            await this.smartClick('Continue');
+            await this.smartClick('Continue', 8000, true);
             await this.humanDelay(3000, 5000);
             await this.capture(this.page);
 
@@ -567,7 +580,7 @@ export class AccountFactory {
         }
     }
 
-    private async clickButtonByText(text: string, timeout = 5000) {
+    private async clickButtonByText(text: string, timeout = 5000, waitForNav = false) {
         if (!this.page) return;
         try {
             await this.page.waitForFunction((t: string) => {
@@ -581,12 +594,52 @@ export class AccountFactory {
                 const btn = buttons.find(b => (b as HTMLElement).innerText.toLowerCase().includes(t.toLowerCase()));
                 if (btn) {
                     btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    (btn as HTMLElement).click();
                 }
             }, text);
+
+            await this.humanDelay(500, 1500);
+
+            if (waitForNav) {
+                await Promise.all([
+                    this.page.waitForNavigation({ waitUntil: 'networkidle2' }).catch(() => { }),
+                    this.page.evaluate((t: string) => {
+                        const buttons = Array.from(document.querySelectorAll('button'));
+                        const btn = buttons.find(b => (b as HTMLElement).innerText.toLowerCase().includes(t.toLowerCase()));
+                        if (btn) (btn as HTMLElement).click();
+                    }, text)
+                ]);
+            } else {
+                await this.page.evaluate((t: string) => {
+                    const buttons = Array.from(document.querySelectorAll('button'));
+                    const btn = buttons.find(b => (b as HTMLElement).innerText.toLowerCase().includes(t.toLowerCase()));
+                    if (btn) (btn as HTMLElement).click();
+                }, text);
+            }
         } catch (e) {
             this.log(`⚠️ Button "${text}" not found within timeout.`);
             throw e;
+        }
+    }
+
+    private async checkForBotTrap() {
+        if (!this.page) return;
+        const isTrap = await this.page.evaluate(() => {
+            const text = document.body.innerText.toLowerCase();
+            const words = text.split(/\s+/).filter(w => w === 'word').length;
+            // The user saw "word word word word"
+            return words > 10 || text.includes('word word word');
+        });
+
+        if (isTrap) {
+            this.log('🚨 BOT TRAP DETECTED ("word" page). Attempting human recovery...');
+            await this.capture(this.page);
+            // Simulate human confusion/scrolling
+            await this.page.mouse.move(Math.random() * 500, Math.random() * 500);
+            await this.page.evaluate(() => window.scrollBy(0, 100));
+            await this.humanDelay(2000, 4000);
+            await this.page.evaluate(() => window.scrollBy(0, -100));
+            this.log('⏸️ Recovery move done. Pausing for manual check.');
+            if (!this.isManualControl) this.toggleManual();
         }
     }
 
@@ -603,15 +656,31 @@ export class AccountFactory {
         if (!this.page) return;
         try {
             await this.page.focus(selector);
-            for (const char of text) {
+            await this.humanDelay(400, 800); // Wait before starting
+
+            for (let i = 0; i < text.length; i++) {
+                const char = text[i];
                 await this.page.keyboard.type(char);
-                const delay = Math.floor(Math.random() * (80 - 40 + 1) + 40); // Slightly faster than user requested for better UX, but still human
+
+                // Varied delay
+                let delay = Math.floor(Math.random() * (180 - 100 + 1) + 100);
+
+                // Long pause after special characters (like + or @ in email)
+                if (char === '+' || char === '@' || char === '.') {
+                    delay += Math.floor(Math.random() * 400 + 200);
+                }
+
+                // Random jitter every ~5 chars
+                if (i % 5 === 0 && Math.random() > 0.7) {
+                    delay += Math.floor(Math.random() * 300 + 100);
+                }
+
                 await new Promise(r => setTimeout(r, delay));
             }
+            await this.humanDelay(300, 700); // Wait after finishing
         } catch (e: any) {
             this.log(`⚠️ Human typing failed on ${selector}: ${e.message}`);
-            // Fallback to normal type if focus fails
-            await this.page.type(selector, text, { delay: 100 }).catch(() => { });
+            await this.page.type(selector, text, { delay: 200 }).catch(() => { });
         }
     }
 }
