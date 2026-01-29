@@ -1,3 +1,4 @@
+// Triggering redeploy to apply Prisma table fixes
 import dotenv from "dotenv";
 import { buildApp } from "./app.js";
 import { Server } from "socket.io";
