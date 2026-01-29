@@ -227,6 +227,8 @@ export class AccountFactory {
                         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     }, selector);
 
+                    await this.humanNoise(1, 2);
+
                     if (waitForNav) {
                         await Promise.all([
                             this.page.waitForNavigation({ waitUntil: 'networkidle2' }).catch(() => { }),
@@ -347,8 +349,19 @@ export class AccountFactory {
             await this.capture(this.page);
 
             this.log('🚀 Clicking Continue...');
-            await this.smartClick('Continue', 8000, true);
-            await this.humanDelay(3000, 5000);
+            // Wait for the email input to DISAPPEAR after clicking
+            const emailSelector = 'input[aria-label="Email address"]';
+            await this.smartClick('Continue', 8000, false);
+
+            this.log('⏳ Waiting for Email field to disappear (Page Switch)...');
+            try {
+                await this.page.waitForFunction((sel: string) => !document.querySelector(sel), { timeout: 10000 }, emailSelector);
+            } catch (e) {
+                this.log('⚠️ Email field didn\'t disappear, maybe it failed or is same URL.');
+            }
+
+            await this.humanDelay(2000, 4000);
+            await this.humanNoise(2, 4);
             await this.capture(this.page);
 
             // Check for bot trap
@@ -429,19 +442,43 @@ export class AccountFactory {
             this.log(`🏠 Human-typing address: ${addressStr}`);
             await this.waitWhilePaused();
             await this.humanType('input[aria-label="Street address"]', addressStr);
+            await this.humanNoise(1, 2);
             await this.capture(this.page);
 
             const streetPart = addressStr.split(',')[0];
+            this.log(`⏳ Waiting for suggestion matching: "${streetPart}"`);
             await this.page.waitForFunction((text: string) => {
-                const els = Array.from(document.querySelectorAll('div[role="button"]'));
+                const els = Array.from(document.querySelectorAll('div[role="button"], li[role="option"]'));
                 return els.some(el => (el as HTMLElement).innerText.includes(text));
-            }, {}, streetPart);
+            }, { timeout: 10000 }, streetPart);
+
+            await this.humanNoise(1, 2);
 
             await this.page.evaluate((text: string) => {
-                const els = Array.from(document.querySelectorAll('div[role="button"]'));
-                const suggestion = els.find(el => (el as HTMLElement).innerText.includes(text));
-                if (suggestion) (suggestion as HTMLElement).click();
+                const els = Array.from(document.querySelectorAll('div[role="button"], li[role="option"]'));
+                const suggestion = els.find(el => (el as HTMLElement).innerText.includes(text)) as HTMLElement;
+                if (suggestion) {
+                    suggestion.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    // We'll click it normally via mouse to simulate human movement
+                    const rect = suggestion.getBoundingClientRect();
+                    (window as any).__targetCoords = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+                }
             }, streetPart);
+
+            const coords = await this.page.evaluate(() => (window as any).__targetCoords);
+            if (coords) {
+                this.log(`🖱️ Moving mouse to suggestion: ${coords.x}, ${coords.y}`);
+                await this.page.mouse.move(coords.x, coords.y, { steps: 10 });
+                await this.humanDelay(300, 800);
+                await this.page.mouse.click(coords.x, coords.y);
+            } else {
+                this.log('⚠️ Could not map suggestion coordinates, falling back to evaluate click.');
+                await this.page.evaluate((text: string) => {
+                    const els = Array.from(document.querySelectorAll('div[role="button"], li[role="option"]'));
+                    const suggestion = els.find(el => (el as HTMLElement).innerText.includes(text));
+                    if (suggestion) (suggestion as HTMLElement).click();
+                }, streetPart);
+            }
 
             await new Promise(r => setTimeout(r, 1000));
             await this.smartClick('Continue', 8000, true);
@@ -643,6 +680,25 @@ export class AccountFactory {
         }
     }
 
+    private async humanNoise(moves = 1, scrolls = 1) {
+        if (!this.page) return;
+        try {
+            for (let i = 0; i < moves; i++) {
+                const x = Math.floor(Math.random() * 800 + 100);
+                const y = Math.floor(Math.random() * 600 + 100);
+                await this.page.mouse.move(x, y, { steps: Math.floor(Math.random() * 10 + 5) });
+                await new Promise(r => setTimeout(r, Math.random() * 500));
+            }
+            for (let i = 0; i < scrolls; i++) {
+                const delta = Math.floor(Math.random() * 200 - 100);
+                await this.page.evaluate((d: number) => window.scrollBy({ top: d, behavior: 'smooth' }), delta);
+                await new Promise(r => setTimeout(r, Math.random() * 800 + 200));
+            }
+        } catch (e) {
+            // Noise should never crash the flow
+        }
+    }
+
     private async humanDelay(min = 500, max = 2000) {
         const delay = Math.floor(Math.random() * (max - min + 1) + min);
         await new Promise(r => setTimeout(r, delay));
@@ -656,31 +712,45 @@ export class AccountFactory {
         if (!this.page) return;
         try {
             await this.page.focus(selector);
-            await this.humanDelay(400, 800); // Wait before starting
+            await this.humanDelay(600, 1200); // Wait before starting
 
             for (let i = 0; i < text.length; i++) {
                 const char = text[i];
-                await this.page.keyboard.type(char);
 
-                // Varied delay
-                let delay = Math.floor(Math.random() * (180 - 100 + 1) + 100);
-
-                // Long pause after special characters (like + or @ in email)
-                if (char === '+' || char === '@' || char === '.') {
-                    delay += Math.floor(Math.random() * 400 + 200);
+                // Random Typo (2% chance)
+                if (Math.random() < 0.02 && text.length > 3) {
+                    const keys = 'abcdefghijklmnopqrstuvwxyz';
+                    const typo = keys[Math.floor(Math.random() * keys.length)];
+                    await this.page.keyboard.type(typo);
+                    await new Promise(r => setTimeout(r, Math.random() * 300 + 200));
+                    await this.page.keyboard.press('Backspace');
+                    await new Promise(r => setTimeout(r, Math.random() * 200 + 100));
                 }
 
-                // Random jitter every ~5 chars
-                if (i % 5 === 0 && Math.random() > 0.7) {
-                    delay += Math.floor(Math.random() * 300 + 100);
+                await this.page.keyboard.type(char);
+
+                // Very human timing: 150ms to 450ms
+                let delay = Math.floor(Math.random() * (450 - 150 + 1) + 150);
+
+                // Longer pause on spaces or special chars
+                if (char === ' ' || char === '+' || char === '@' || char === '.') {
+                    delay += Math.floor(Math.random() * 800 + 300);
+                    // Might move mouse during a long pause
+                    if (Math.random() > 0.5) await this.humanNoise(1, 0);
+                }
+
+                // Random "thinking" pause
+                if (i % 7 === 0 && Math.random() > 0.8) {
+                    delay += Math.floor(Math.random() * 1500 + 500);
+                    await this.humanNoise(0, 1);
                 }
 
                 await new Promise(r => setTimeout(r, delay));
             }
-            await this.humanDelay(300, 700); // Wait after finishing
+            await this.humanDelay(800, 1500); // Settling delay
         } catch (e: any) {
             this.log(`⚠️ Human typing failed on ${selector}: ${e.message}`);
-            await this.page.type(selector, text, { delay: 200 }).catch(() => { });
+            await this.page.type(selector, text, { delay: 300 }).catch(() => { });
         }
     }
 }
