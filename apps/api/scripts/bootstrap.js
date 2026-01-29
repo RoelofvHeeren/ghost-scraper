@@ -11,15 +11,24 @@ async function main() {
 
     try {
         console.log('📡 Attempting Prisma DB Push...');
+        // First try with inherit to see real-time output
         execSync('npx prisma db push --schema=../../prisma/schema.prisma --accept-data-loss', { stdio: 'inherit' });
         console.log('✅ Prisma DB Push successful.');
     } catch (error) {
-        console.warn('⚠️ Prisma DB Push failed. Checking if we need to initialize manually...');
+        console.warn('⚠️ Prisma DB Push failed. Re-capturing error output...');
 
-        // Check if the error is due to missing tables (P1014)
-        const errOutput = error.stdout?.toString() || error.stderr?.toString() || error.message;
-        if (errOutput.includes('P1014') || errOutput.includes('does not exist')) {
-            console.log('🔍 Detected missing tables (P1014). Running manual SQL initialization...');
+        let errOutput = '';
+        try {
+            // Re-run quietly to capture the error string
+            execSync('npx prisma db push --schema=../../prisma/schema.prisma --accept-data-loss', { stdio: 'pipe' });
+        } catch (pipeError) {
+            errOutput = (pipeError.stdout?.toString() || '') + (pipeError.stderr?.toString() || '');
+        }
+
+        console.log('🔍 Captured Error snippet:', errOutput.slice(0, 300));
+
+        if (errOutput.includes('P1014') || errOutput.includes('does not exist') || errOutput.includes('LearnedSelector')) {
+            console.log('🚨 Confirmed: Missing tables (P1014). Running manual SQL initialization...');
 
             const { Client } = pg;
             const client = new Client({
@@ -31,27 +40,25 @@ async function main() {
                 const sqlPath = path.join(__dirname, 'full_schema.sql');
                 const sql = fs.readFileSync(sqlPath, 'utf8');
 
-                // Split by semicolon to run statements separately (pg driver doesn't like multi-statement strings sometimes)
-                // But for initialization, we can try running it as one block if the DB supports it.
-                // We'll wrap in a transaction.
+                console.log('📝 Executing full_schema.sql...');
                 await client.query('BEGIN');
                 await client.query(sql);
                 await client.query('COMMIT');
 
                 console.log('✅ Manual SQL initialization successful.');
 
-                // Try prisma again to ensure everything is synced
+                // Final sync to ensure Prisma is satisfied
                 console.log('📡 Re-attempting Prisma DB Push after manual init...');
                 execSync('npx prisma db push --schema=../../prisma/schema.prisma --accept-data-loss', { stdio: 'inherit' });
             } catch (sqlError) {
                 console.error('❌ Manual SQL initialization failed:', sqlError.message);
-                await client.query('ROLLBACK').catch(() => { });
+                if (client) await client.query('ROLLBACK').catch(() => { });
                 process.exit(1);
             } finally {
-                await client.end();
+                await client.end().catch(() => { });
             }
         } else {
-            console.error('❌ Prisma DB Push failed with an unexpected error:', error.message);
+            console.error('❌ Prisma DB Push failed with an unhandled error. Output was:', errOutput);
             process.exit(1);
         }
     }
