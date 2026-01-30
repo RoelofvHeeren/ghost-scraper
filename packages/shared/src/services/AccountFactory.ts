@@ -222,10 +222,22 @@ export class AccountFactory {
                 if (selector) {
                     await this.page.waitForSelector(selector, { timeout: 3000 });
                     await this.waitWhilePaused();
-                    await this.page.evaluate((s: string) => {
+
+                    // Human scroll & move
+                    await this.humanScrollTo(selector);
+
+                    const elementBox = await this.page.evaluate((s: string) => {
                         const el = document.querySelector(s);
-                        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        if (!el) return null;
+                        const rect = el.getBoundingClientRect();
+                        return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
                     }, selector);
+
+                    if (elementBox) {
+                        const targetX = elementBox.x + elementBox.width / 2;
+                        const targetY = elementBox.y + elementBox.height / 2;
+                        await this.humanMoveTo(targetX, targetY);
+                    }
 
                     await this.humanNoise(1, 2);
 
@@ -469,7 +481,7 @@ export class AccountFactory {
             const coords = await this.page.evaluate(() => (window as any).__targetCoords);
             if (coords) {
                 this.log(`🖱️ Moving mouse to suggestion: ${coords.x}, ${coords.y}`);
-                await this.page.mouse.move(coords.x, coords.y, { steps: 10 });
+                await this.humanMoveTo(coords.x, coords.y);
                 await this.humanDelay(300, 800);
                 await this.page.mouse.click(coords.x, coords.y);
             } else {
@@ -658,7 +670,7 @@ export class AccountFactory {
                     this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {
                         this.log('⚠️ Navigation timeout, but proceeding...');
                     }),
-                    coords ? this.page.mouse.click(coords.x, coords.y) : this.page.evaluate((t: string) => {
+                    coords ? this.humanMoveTo(coords.x, coords.y).then(() => this.page.mouse.click(coords.x, coords.y)) : this.page.evaluate((t: string) => {
                         const search = t.toLowerCase();
                         const elements = Array.from(document.querySelectorAll('button, div, span, [role="button"]'));
                         const btn = elements.find(el => (el as HTMLElement).innerText?.toLowerCase().includes(search)) as HTMLElement;
@@ -668,7 +680,7 @@ export class AccountFactory {
             } else {
                 this.log(`🖱️ Clicking "${text}"`);
                 if (coords) {
-                    await this.page.mouse.move(coords.x, coords.y, { steps: 5 });
+                    await this.humanMoveTo(coords.x, coords.y);
                     await this.page.mouse.click(coords.x, coords.y);
                 } else {
                     await this.page.evaluate((t: string) => {
@@ -698,7 +710,7 @@ export class AccountFactory {
             this.log('🚨 BOT TRAP DETECTED ("word" page). Attempting human recovery...');
             await this.capture(this.page);
             // Simulate human confusion/scrolling
-            await this.page.mouse.move(Math.random() * 500, Math.random() * 500);
+            await this.humanMoveTo(Math.random() * 500, Math.random() * 500);
             await this.page.evaluate(() => window.scrollBy(0, 100));
             await this.humanDelay(2000, 4000);
             await this.page.evaluate(() => window.scrollBy(0, -100));
@@ -713,7 +725,7 @@ export class AccountFactory {
             for (let i = 0; i < moves; i++) {
                 const x = Math.floor(Math.random() * 800 + 100);
                 const y = Math.floor(Math.random() * 600 + 100);
-                await this.page.mouse.move(x, y, { steps: Math.floor(Math.random() * 10 + 5) });
+                await this.humanMoveTo(x, y);
                 await new Promise(r => setTimeout(r, Math.random() * 500));
             }
             for (let i = 0; i < scrolls; i++) {
@@ -735,14 +747,128 @@ export class AccountFactory {
         return arr[Math.floor(Math.random() * arr.length)];
     }
 
+    private currentMouse = { x: 0, y: 0 };
+
+    private cubicBezier(t: number, p0: number, p1: number, p2: number, p3: number): number {
+        return (1 - t) ** 3 * p0 + 3 * (1 - t) ** 2 * t * p1 + 3 * (1 - t) * t ** 2 * p2 + t ** 3 * p3;
+    }
+
+    public async humanMoveTo(targetX: number, targetY: number) {
+        if (!this.page) return;
+
+        const startX = this.currentMouse.x;
+        const startY = this.currentMouse.y;
+
+        // Random control points to create a curve
+        // Control point 1: somewhere between start and target, with random deviation
+        const cp1x = startX + (targetX - startX) * (Math.random() * 0.5 + 0.1) + (Math.random() * 100 - 50);
+        const cp1y = startY + (targetY - startY) * (Math.random() * 0.5 + 0.1) + (Math.random() * 100 - 50);
+
+        // Control point 2: closer to target
+        const cp2x = startX + (targetX - startX) * (Math.random() * 0.5 + 0.4) + (Math.random() * 100 - 50);
+        const cp2y = startY + (targetY - startY) * (Math.random() * 0.5 + 0.4) + (Math.random() * 100 - 50);
+
+        const steps = Math.floor(Math.random() * 30 + 30); // 30-60 steps
+
+        for (let i = 0; i <= steps; i++) {
+            const t = i / steps;
+            const x = this.cubicBezier(t, startX, cp1x, cp2x, targetX);
+            const y = this.cubicBezier(t, startY, cp1y, cp2y, targetY);
+
+            await this.page.mouse.move(x, y);
+            this.currentMouse = { x, y };
+
+            // Variable speed: faster in middle, slower at ends (human-like)
+            // Determine wait time based on "velocity" (distance from last point) or just simple easing
+            // Simple approach: min delay
+            await new Promise(r => setTimeout(r, Math.random() * 2 + 1));
+        }
+
+        // Final precise move
+        await this.page.mouse.move(targetX, targetY);
+        this.currentMouse = { x: targetX, y: targetY };
+    }
+
+    public async humanScrollTo(selector: string) {
+        if (!this.page) return;
+
+        try {
+            // Check if element exists
+            await this.page.waitForSelector(selector, { timeout: 5000 });
+
+            const box = await this.page.evaluate((s: string) => {
+                const el = document.querySelector(s);
+                if (!el) return null;
+                const rect = el.getBoundingClientRect();
+                return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, top: rect.top, windowY: window.scrollY, windowHeight: window.innerHeight };
+            }, selector);
+
+            if (!box) return;
+
+            // Calculate goal scroll position (element in middle third of screen)
+            // Element absolute Y = box.top + window.scrollY
+            // Target Scroll Y = Element Absolute Y - (Window Height / 2)
+            const absoluteY = box.top + box.windowY;
+            const targetScrollY = Math.max(0, absoluteY - (box.windowHeight / 2) + (Math.random() * 100 - 50));
+
+            const startScrollY = await this.page.evaluate(() => window.scrollY);
+            const distance = targetScrollY - startScrollY;
+
+            if (Math.abs(distance) < 50) return; // Already visible enough
+
+            // Scroll in chunks
+            const chunks = Math.floor(Math.abs(distance) / 100) + 1;
+            const baseChunk = distance / chunks;
+
+            for (let i = 0; i < chunks; i++) {
+                const chunk = baseChunk + (Math.random() * 40 - 20); // Randomize chunk size
+                await this.page.evaluate((y: number) => window.scrollBy(0, y), chunk);
+                await this.humanDelay(50, 150); // Pause between scrolls
+
+                // Occasional "overshoot" or pause
+                if (Math.random() < 0.1) {
+                    await this.humanDelay(300, 600);
+                }
+            }
+        } catch (e) {
+            this.log(`⚠️ humanScrollTo failed for ${selector}: ${e}`);
+        }
+    }
+
     private async humanType(selector: string, text: string) {
         if (!this.page) return;
         try {
             this.log(`⌨️ [STEALTH] Starting human type for: ${selector} (${text.length} chars)`);
             const startTime = Date.now();
 
-            await this.page.focus(selector);
-            await this.humanDelay(800, 1500); // Increased initial wait
+            // 1. Scroll into view naturally
+            await this.humanScrollTo(selector);
+            await this.humanDelay(300, 600);
+
+            // 2. Move mouse to element
+            const elementBox = await this.page.evaluate((s: string) => {
+                const el = document.querySelector(s);
+                if (!el) return null;
+                const rect = el.getBoundingClientRect();
+                return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+            }, selector);
+
+            if (elementBox) {
+                // Target a random point inside the element
+                const targetX = elementBox.x + (Math.random() * (elementBox.width * 0.8)) + (elementBox.width * 0.1);
+                const targetY = elementBox.y + (Math.random() * (elementBox.height * 0.8)) + (elementBox.height * 0.1);
+
+                await this.humanMoveTo(targetX, targetY);
+                await this.humanDelay(200, 400); // Hover before click
+
+                await this.page.mouse.click(targetX, targetY);
+                this.log('🖱️ Clicked input to focus');
+            } else {
+                // Fallback if we can't get coordinate
+                await this.page.focus(selector);
+            }
+
+            await this.humanDelay(800, 1500); // Wait after focus
 
             for (let i = 0; i < text.length; i++) {
                 const char = text[i];
@@ -786,4 +912,5 @@ export class AccountFactory {
             await this.page.type(selector, text, { delay: 400 }).catch(() => { });
         }
     }
+
 }
