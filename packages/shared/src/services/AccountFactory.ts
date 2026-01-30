@@ -513,7 +513,10 @@ export class AccountFactory {
                 await this.page.waitForFunction(() => {
                     const btn = document.querySelector('button');
                     // Heuristic: check if any primary button is not disabled
-                    return btn && !btn.disabled && btn.getAttribute('aria-disabled') !== 'true';
+                    if (!btn) return false;
+                    const ariaDisabled = btn.getAttribute('aria-disabled') === 'true';
+                    const dataDisabled = btn.getAttribute('data-disabled') === 'true';
+                    return !btn.disabled && !ariaDisabled && !dataDisabled;
                 }, { timeout: 5000 }).catch(() => { });
             } catch { }
 
