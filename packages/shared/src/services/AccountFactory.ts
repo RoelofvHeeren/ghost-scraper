@@ -225,18 +225,17 @@ export class AccountFactory {
 
                     // Human scroll & move
                     await this.humanScrollTo(selector);
+                    await this.humanDelay(300, 600); // Wait for scroll to settle
 
                     const elementBox = await this.page.evaluate((s: string) => {
                         const el = document.querySelector(s);
                         if (!el) return null;
                         const rect = el.getBoundingClientRect();
-                        return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+                        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
                     }, selector);
 
                     if (elementBox) {
-                        const targetX = elementBox.x + elementBox.width / 2;
-                        const targetY = elementBox.y + elementBox.height / 2;
-                        await this.humanMoveTo(targetX, targetY);
+                        await this.humanMoveTo(elementBox.x, elementBox.y);
                     }
 
                     await this.humanNoise(1, 2);
@@ -654,15 +653,24 @@ export class AccountFactory {
 
                 if (btn) {
                     btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    // Store for the mouse click fallback
-                    const rect = btn.getBoundingClientRect();
-                    (window as any).__targetCoords = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
                 }
             }, text);
 
-            await this.humanDelay(800, 1500);
+            await this.humanDelay(800, 1500); // Wait for scroll
 
-            const coords = await this.page.evaluate(() => (window as any).__targetCoords);
+            // Re-calculate coords NOW that scrolling is done
+            const coords = await this.page.evaluate((t: string) => {
+                const search = t.toLowerCase();
+                const elements = Array.from(document.querySelectorAll('button, div, span, [role="button"]'));
+                const btn = elements.find(el => {
+                    const textContent = (el as HTMLElement).innerText?.toLowerCase() || '';
+                    return textContent.includes(search) && (el as HTMLElement).offsetHeight > 0;
+                }) as HTMLElement;
+
+                if (!btn) return null;
+                const rect = btn.getBoundingClientRect();
+                return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+            }, text);
 
             if (waitForNav) {
                 this.log(`🖱️ Clicking "${text}" (expecting navigation)`);
@@ -903,6 +911,11 @@ export class AccountFactory {
 
                 await new Promise(r => setTimeout(r, delay));
             }
+
+            // 3. Force Validation (Tab out)
+            await this.humanDelay(300, 600);
+            await this.page.keyboard.press('Tab');
+            this.log('⇥ Pressed Tab to trigger validation');
 
             const duration = (Date.now() - startTime) / 1000;
             this.log(`✅ [STEALTH] Finished typing into ${selector} in ${duration.toFixed(1)}s`);
