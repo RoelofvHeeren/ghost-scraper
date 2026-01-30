@@ -1,4 +1,3 @@
-
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { executablePath } from 'puppeteer';
@@ -69,7 +68,7 @@ export class AccountFactory {
 
     private async waitWhilePaused() {
         while (this.isManualControl) {
-            await new Promise(r => setTimeout(r, 1000));
+            await new Promise(r => setTimeout(r, 200)); // Faster loop for responsiveness
             await this.capture(this.page);
         }
     }
@@ -357,6 +356,17 @@ export class AccountFactory {
 
             this.log('🔒 Human-typing password...');
             await this.waitWhilePaused();
+
+            // FIX: Explicitly wait for password field to be VISIBLE with dimensions
+            try {
+                await this.page.waitForFunction(() => {
+                    const el = document.querySelector('input[aria-label="Create a password"]');
+                    return el && (el as HTMLElement).offsetHeight > 0;
+                }, { timeout: 10000 });
+            } catch (e) {
+                this.log('⚠️ Password field not immediately visible, proceeding anyway...');
+            }
+
             await this.humanType('input[aria-label="Create a password"]', password);
             await this.capture(this.page);
 
@@ -453,46 +463,60 @@ export class AccountFactory {
 
             this.log(`🏠 Human-typing address: ${addressStr}`);
             await this.waitWhilePaused();
-            await this.humanType('input[aria-label="Street address"]', addressStr);
-            await this.humanNoise(1, 2);
+
+            // Type only the street part first to trigger suggestions
+            const streetPart = addressStr.split(',')[0];
+            await this.humanType('input[aria-label="Street address"]', streetPart);
+            await this.humanNoise(1, 1);
             await this.capture(this.page);
 
-            const streetPart = addressStr.split(',')[0];
             this.log(`⏳ Waiting for suggestion matching: "${streetPart}"`);
-            await this.page.waitForFunction((text: string) => {
-                const els = Array.from(document.querySelectorAll('div[role="button"], li[role="option"]'));
-                return els.some(el => (el as HTMLElement).innerText.includes(text));
-            }, { timeout: 10000 }, streetPart);
+            try {
+                // Wait for the suggestion container to appear
+                await this.page.waitForSelector('div[role="button"]', { timeout: 10000 });
 
-            await this.humanNoise(1, 2);
-
-            await this.page.evaluate((text: string) => {
-                const els = Array.from(document.querySelectorAll('div[role="button"], li[role="option"]'));
-                const suggestion = els.find(el => (el as HTMLElement).innerText.includes(text)) as HTMLElement;
-                if (suggestion) {
-                    suggestion.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    // We'll click it normally via mouse to simulate human movement
-                    const rect = suggestion.getBoundingClientRect();
-                    (window as any).__targetCoords = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-                }
-            }, streetPart);
-
-            const coords = await this.page.evaluate(() => (window as any).__targetCoords);
-            if (coords) {
-                this.log(`🖱️ Moving mouse to suggestion: ${coords.x}, ${coords.y}`);
-                await this.humanMoveTo(coords.x, coords.y);
-                await this.humanDelay(300, 800);
-                await this.page.mouse.click(coords.x, coords.y);
-            } else {
-                this.log('⚠️ Could not map suggestion coordinates, falling back to evaluate click.');
+                // Find the specific suggestion
                 await this.page.evaluate((text: string) => {
-                    const els = Array.from(document.querySelectorAll('div[role="button"], li[role="option"]'));
-                    const suggestion = els.find(el => (el as HTMLElement).innerText.includes(text));
-                    if (suggestion) (suggestion as HTMLElement).click();
+                    const els = Array.from(document.querySelectorAll('div[role="button"]'));
+                    const suggestion = els.find(el => (el as HTMLElement).innerText.includes(text)) as HTMLElement;
+                    if (suggestion) {
+                        suggestion.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        const rect = suggestion.getBoundingClientRect();
+                        (window as any).__targetCoords = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+                    }
                 }, streetPart);
+
+                const coords = await this.page.evaluate(() => (window as any).__targetCoords);
+
+                if (coords) {
+                    this.log(`🖱️ Moving mouse to suggestion: ${coords.x}, ${coords.y}`);
+                    await this.humanMoveTo(coords.x, coords.y);
+                    await this.humanDelay(300, 800);
+                    // Click the suggestion
+                    await this.page.mouse.click(coords.x, coords.y);
+                    this.log('✅ Clicked address suggestion');
+                } else {
+                    this.log('⚠️ Specific suggestion not found via coords, trying JS click...');
+                    await this.page.evaluate((text: string) => {
+                        const els = Array.from(document.querySelectorAll('div[role="button"]'));
+                        const suggestion = els.find(el => (el as HTMLElement).innerText.includes(text));
+                        if (suggestion) (suggestion as HTMLElement).click();
+                    }, streetPart);
+                }
+            } catch (e) {
+                this.log(`⚠️ Suggestion selection failed: ${e}`);
             }
 
             await new Promise(r => setTimeout(r, 1000));
+            // Wait for Continue button to be enabled (no aria-disabled or data-disabled="false")
+            try {
+                await this.page.waitForFunction(() => {
+                    const btn = document.querySelector('button');
+                    // Heuristic: check if any primary button is not disabled
+                    return btn && !btn.disabled && btn.getAttribute('aria-disabled') !== 'true';
+                }, { timeout: 5000 }).catch(() => { });
+            } catch { }
+
             await this.smartClick('Continue', 8000, true);
             await this.humanDelay(3000, 5000);
             await this.capture(this.page);
@@ -646,12 +670,22 @@ export class AccountFactory {
             await this.page.evaluate((t: string) => {
                 const search = t.toLowerCase();
                 const elements = Array.from(document.querySelectorAll('button, div, span, [role="button"]'));
-                const btn = elements.find(el => {
+                // Prioritize explicit buttons first
+                let btn = elements.find(el => {
                     const textContent = (el as HTMLElement).innerText?.toLowerCase() || '';
-                    return textContent.includes(search) && (el as HTMLElement).offsetHeight > 0;
+                    return textContent.includes(search) && (el as HTMLElement).offsetHeight > 0 && (el.tagName === 'BUTTON' || el.getAttribute('role') === 'button');
                 }) as HTMLElement;
 
+                if (!btn) {
+                    btn = elements.find(el => {
+                        const textContent = (el as HTMLElement).innerText?.toLowerCase() || '';
+                        return textContent.includes(search) && (el as HTMLElement).offsetHeight > 0;
+                    }) as HTMLElement;
+                }
+
                 if (btn) {
+                    const closest = btn.closest('button') || btn.closest('[role="button"]');
+                    if (closest) btn = closest as HTMLElement;
                     btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 }
             }, text);
@@ -662,12 +696,22 @@ export class AccountFactory {
             const coords = await this.page.evaluate((t: string) => {
                 const search = t.toLowerCase();
                 const elements = Array.from(document.querySelectorAll('button, div, span, [role="button"]'));
-                const btn = elements.find(el => {
+                let btn = elements.find(el => {
                     const textContent = (el as HTMLElement).innerText?.toLowerCase() || '';
-                    return textContent.includes(search) && (el as HTMLElement).offsetHeight > 0;
+                    return textContent.includes(search) && (el as HTMLElement).offsetHeight > 0 && (el.tagName === 'BUTTON' || el.getAttribute('role') === 'button');
                 }) as HTMLElement;
 
+                if (!btn) {
+                    btn = elements.find(el => {
+                        const textContent = (el as HTMLElement).innerText?.toLowerCase() || '';
+                        return textContent.includes(search) && (el as HTMLElement).offsetHeight > 0;
+                    }) as HTMLElement;
+                }
+
                 if (!btn) return null;
+                const closest = btn.closest('button') || btn.closest('[role="button"]');
+                if (closest) btn = closest as HTMLElement;
+
                 const rect = btn.getBoundingClientRect();
                 return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
             }, text);
@@ -853,13 +897,20 @@ export class AccountFactory {
             await this.humanScrollTo(selector);
             await this.humanDelay(300, 600);
 
-            // 2. Move mouse to element
-            const elementBox = await this.page.evaluate((s: string) => {
-                const el = document.querySelector(s);
-                if (!el) return null;
-                const rect = el.getBoundingClientRect();
-                return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
-            }, selector);
+            // 2. Move mouse to element - Retry logic for visibility
+            let elementBox: any = null;
+            for (let i = 0; i < 3; i++) {
+                elementBox = await this.page.evaluate((s: string) => {
+                    const el = document.querySelector(s);
+                    if (!el) return null;
+                    const rect = el.getBoundingClientRect();
+                    return (rect.width > 0 && rect.height > 0) ?
+                        { x: rect.left, y: rect.top, width: rect.width, height: rect.height } : null;
+                }, selector);
+
+                if (elementBox) break;
+                await new Promise(r => setTimeout(r, 500));
+            }
 
             if (elementBox) {
                 // Target a random point inside the element
@@ -872,7 +923,7 @@ export class AccountFactory {
                 await this.page.mouse.click(targetX, targetY);
                 this.log('🖱️ Clicked input to focus');
             } else {
-                // Fallback if we can't get coordinate
+                this.log(`⚠️ precise coords not found for ${selector}, using focus fallback`);
                 await this.page.focus(selector);
             }
 
@@ -925,5 +976,4 @@ export class AccountFactory {
             await this.page.type(selector, text, { delay: 400 }).catch(() => { });
         }
     }
-
 }
