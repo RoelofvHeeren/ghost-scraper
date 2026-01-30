@@ -466,6 +466,11 @@ export class AccountFactory {
 
             // Type only the street part first to trigger suggestions
             const streetPart = addressStr.split(',')[0];
+
+            // Ensure field is empty before typing to avoid appending
+            await this.clearInput('input[aria-label="Street address"]');
+            await this.humanDelay(300, 600);
+
             await this.humanType('input[aria-label="Street address"]', streetPart);
             await this.humanNoise(1, 1);
             await this.capture(this.page);
@@ -977,6 +982,23 @@ export class AccountFactory {
         } catch (e: any) {
             this.log(`⚠️ Human typing failed on ${selector}: ${e.message}`);
             await this.page.type(selector, text, { delay: 400 }).catch(() => { });
+        }
+    }
+
+    private async clearInput(selector: string) {
+        if (!this.page) return;
+        try {
+            await this.page.click(selector, { clickCount: 3 }); // Select all
+            await this.page.keyboard.press('Backspace');
+            // Fallback for some OS/sites
+            await this.page.focus(selector);
+            await this.page.keyboard.down('Meta'); // Command on Mac
+            await this.page.keyboard.press('a');
+            await this.page.keyboard.up('Meta');
+            await this.page.keyboard.press('Backspace');
+            this.log(`🧹 Cleared input: ${selector}`);
+        } catch (e) {
+            this.log(`⚠️ Failed to clear input ${selector}: ${e}`);
         }
     }
 }
