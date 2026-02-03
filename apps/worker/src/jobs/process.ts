@@ -18,10 +18,11 @@ export async function processCandidateJob(job: Job) {
     const profile = sourceConfig.profile === 'TRIMEN' ? SERVICE_PROFILES.TRIMEN : {
         include: sourceConfig.keywords || [],
         exclude: sourceConfig.exclude || [],
-        threshold: sourceConfig.threshold || 20
+        threshold: sourceConfig.threshold || 20,
+        llmCriteria: sourceConfig.llmCriteria || undefined
     };
 
-    const result = qualifyCandidate(candidate.body, profile);
+    const result = await qualifyCandidate(candidate.body, profile);
 
     if (result.isQualified) {
         console.log(`✅ Candidate ${candidateId} qualified. Score: ${result.score}`);

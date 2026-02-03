@@ -7,7 +7,9 @@ import { Plus, Bot, Power, Shield, MapPin, Edit2, Play, MessageSquare, Lock, Use
 export function BotAccountsPage() {
     const queryClient = useQueryClient();
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isHistoryOpen, setIsHistoryOpen] = useState(false);
     const [editingBot, setEditingBot] = useState<any>(null);
+    const [viewHistoryBot, setViewHistoryBot] = useState<string | null>(null);
 
     // Form State
     const [newBot, setNewBot] = useState({
@@ -191,126 +193,290 @@ export function BotAccountsPage() {
                                     </div>
                                 </div>
 
-                                <div className="flex justify-end gap-2 pt-2 border-t border-white/5">
-                                    <button onClick={() => openEdit(bot)} className="flex items-center gap-1 bg-white/5 hover:bg-white/10 text-xs px-3 py-2 rounded text-gray-300 transition-colors">
-                                        <Edit2 size={12} /> Edit
-                                    </button>
+                                <button
+                                    onClick={() => { setViewHistoryBot(bot.id); setIsHistoryOpen(true); }}
+                                    className="flex items-center gap-1 bg-white/5 hover:bg-white/10 text-xs px-3 py-2 rounded text-gray-300 transition-colors"
+                                >
+                                    <MessageSquare size={12} /> History
+                                </button>
+                                <button onClick={() => openEdit(bot)} className="flex items-center gap-1 bg-white/5 hover:bg-white/10 text-xs px-3 py-2 rounded text-gray-300 transition-colors">
+                                    <Edit2 size={12} /> Config
+                                </button>
+                                <button
+                                    onClick={() => apiSvc.startBot(bot.id).then(() => alert("Monitoring started!"))}
+                                    className="flex items-center gap-1 bg-teal-accent/10 hover:bg-teal-accent/20 text-xs px-3 py-2 rounded text-teal-accent transition-colors border border-teal-accent/20"
+                                >
+                                    <Play size={12} /> Monitor
+                                </button>
+                            </div>
+            )}
+
+                            {/* Add Bot Modal */}
+                            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingBot ? "Edit Identity" : "Add New Identity"}>
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="text-xs text-gray-400 uppercase tracking-wider block mb-1">Username / Email</label>
+                                            <input
+                                                type="text"
+                                                value={newBot.username}
+                                                onChange={(e) => setNewBot({ ...newBot, username: e.target.value })}
+                                                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-teal-accent/50"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-gray-400 uppercase tracking-wider block mb-1">Password</label>
+                                            <div className="relative">
+                                                <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                                                <input
+                                                    type="password"
+                                                    value={newBot.password}
+                                                    onChange={(e) => setNewBot({ ...newBot, password: e.target.value })}
+                                                    className="w-full bg-black/40 border border-white/10 rounded-xl pl-9 pr-4 py-3 text-white focus:outline-none focus:border-teal-accent/50"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-xs text-gray-400 uppercase tracking-wider block mb-1">Platform</label>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {['NEXTDOOR', 'REDDIT'].map(p => (
+                                                <button
+                                                    key={p}
+                                                    onClick={() => setNewBot({ ...newBot, platform: p })}
+                                                    className={`p-3 rounded-lg border text-sm font-medium transition-all ${newBot.platform === p
+                                                        ? `bg-teal-500/20 border-teal-500 text-white shadow-[0_0_15px_rgba(20,184,166,0.3)]`
+                                                        : 'bg-black/40 border-white/10 text-gray-400 hover:bg-white/5'
+                                                        }`}
+                                                >
+                                                    {p}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="text-xs text-gray-400 uppercase tracking-wider block mb-1">
+                                            Assign Sources (Max 4) <span className="text-teal-accent ml-2">{newBot.sourceIds.length}/4 selected</span>
+                                        </label>
+                                        <div className="max-h-40 overflow-y-auto border border-white/10 rounded-xl bg-black/40 p-2 space-y-1">
+                                            {sources?.filter((s: any) => s.type === newBot.platform).map((s: any) => (
+                                                <div
+                                                    key={s.id}
+                                                    onClick={() => toggleSourceSelection(s.id)}
+                                                    className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${newBot.sourceIds.includes(s.id)
+                                                        ? 'bg-teal-accent/20 border border-teal-accent/30'
+                                                        : 'hover:bg-white/5 border border-transparent'
+                                                        }`}
+                                                >
+                                                    <span className="text-sm text-gray-300">{s.name}</span>
+                                                    {newBot.sourceIds.includes(s.id) && <div className="w-2 h-2 rounded-full bg-teal-accent"></div>}
+                                                </div>
+                                            ))}
+                                            {(!sources || sources.length === 0) && <div className="text-gray-500 text-sm p-2">No sources available. Create one first.</div>}
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-xs text-gray-400 uppercase tracking-wider block mb-1">Assign Campaign workflow</label>
+                                        <select
+                                            value={newBot.campaignId}
+                                            onChange={(e) => setNewBot({ ...newBot, campaignId: e.target.value })}
+                                            className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-teal-accent/50 appearance-none cursor-pointer"
+                                        >
+                                            <option value="">Select a campaign...</option>
+                                            {campaigns?.map((c: any) => (
+                                                <option key={c.id} value={c.id}>{c.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-xs text-gray-400 uppercase tracking-wider block mb-1">Proxy String (Optional)</label>
+                                        <input
+                                            type="text"
+                                            value={newBot.proxyUrl}
+                                            onChange={(e) => setNewBot({ ...newBot, proxyUrl: e.target.value })}
+                                            placeholder="http://user:pass@host:port"
+                                            className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-teal-accent/50"
+                                        />
+                                    </div>
+
+                                    <div className="pt-4 flex justify-end gap-3">
+                                        <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-gray-400 hover:text-white transition-colors">Cancel</button>
+                                        <button
+                                            disabled={createMutation.isPending || updateSourcesMutation.isPending}
+                                            onClick={handleSaveBot}
+                                            className="px-6 py-2 bg-white text-black font-bold rounded-lg shadow-lg hover:bg-gray-200 transition-all disabled:opacity-50"
+                                        >
+                                            {createMutation.isPending || updateSourcesMutation.isPending ? 'Saving...' : (editingBot ? 'Save Changes' : 'Deploy Identity')}
+                                        </button>
+                                    </div>
+                                </div>
+                            </Modal>
+
+                            {/* History Modal */}
+                            <Modal isOpen={isHistoryOpen} onClose={() => setIsHistoryOpen(false)} title="Monitoring History">
+                                <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+                                    {isLoadingCandidates ? (
+                                        <div className="flex justify-center p-8"><Loader2 className="animate-spin text-teal-accent" /></div>
+                                    ) : candidates?.length === 0 ? (
+                                        <div className="text-center text-gray-500 py-10">No messages scraped yet.</div>
+                                    ) : (
+                                        candidates?.map((c: any) => (
+                                            <div key={c.id} className="bg-white/5 p-4 rounded-xl border border-white/10 text-sm">
+                                                <div className="flex justify-between mb-2">
+                                                    <span className="font-bold text-white max-w-[70%] truncate">{c.title || "No Title"}</span>
+                                                    <span className="text-xs text-gray-400">{new Date(c.createdAt).toLocaleTimeString()}</span>
+                                                </div>
+                                                <p className="text-gray-400 mb-3">{c.body}</p>
+                                                <div className="flex items-center gap-2">
+                                                    {c.lead ? (
+                                                        <span className="text-green-400 text-xs bg-green-500/10 px-2 py-1 rounded border border-green-500/20">Qualified Lead</span>
+                                                    ) : (
+                                                        <span className="text-gray-500 text-xs bg-white/5 px-2 py-1 rounded">Disqualified</span>
+                                                    )}
+                                                    <span className="text-xs text-gray-600">{c.source?.name}</span>
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </Modal>
+                        </div>
+                    );
+}
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-xs text-gray-400 uppercase tracking-wider block mb-1">Username / Email</label>
+                                <input
+                                    type="text"
+                                    value={newBot.username}
+                                    onChange={(e) => setNewBot({ ...newBot, username: e.target.value })}
+                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-teal-accent/50"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs text-gray-400 uppercase tracking-wider block mb-1">Password</label>
+                                <div className="relative">
+                                    <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                                    <input
+                                        type="password"
+                                        value={newBot.password}
+                                        onChange={(e) => setNewBot({ ...newBot, password: e.target.value })}
+                                        className="w-full bg-black/40 border border-white/10 rounded-xl pl-9 pr-4 py-3 text-white focus:outline-none focus:border-teal-accent/50"
+                                    />
                                 </div>
                             </div>
                         </div>
-                    ))}
-                    {bots?.length === 0 && (
-                        <div className="col-span-full text-center py-20 text-gray-500 border border-dashed border-white/10 rounded-2xl">
-                            No bot identities created yet.
-                        </div>
-                    )}
-                </div>
-            )}
 
-            {/* Add Bot Modal */}
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingBot ? "Edit Identity" : "Add New Identity"}>
-                <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="text-xs text-gray-400 uppercase tracking-wider block mb-1">Username / Email</label>
+                            <label className="text-xs text-gray-400 uppercase tracking-wider block mb-1">Platform</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                {['NEXTDOOR', 'REDDIT'].map(p => (
+                                    <button
+                                        key={p}
+                                        onClick={() => setNewBot({ ...newBot, platform: p })}
+                                        className={`p-3 rounded-lg border text-sm font-medium transition-all ${newBot.platform === p
+                                            ? `bg-teal-500/20 border-teal-500 text-white shadow-[0_0_15px_rgba(20,184,166,0.3)]`
+                                            : 'bg-black/40 border-white/10 text-gray-400 hover:bg-white/5'
+                                            }`}
+                                    >
+                                        {p}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-xs text-gray-400 uppercase tracking-wider block mb-1">
+                                Assign Sources (Max 4) <span className="text-teal-accent ml-2">{newBot.sourceIds.length}/4 selected</span>
+                            </label>
+                            <div className="max-h-40 overflow-y-auto border border-white/10 rounded-xl bg-black/40 p-2 space-y-1">
+                                {sources?.filter((s: any) => s.type === newBot.platform).map((s: any) => (
+                                    <div
+                                        key={s.id}
+                                        onClick={() => toggleSourceSelection(s.id)}
+                                        className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${newBot.sourceIds.includes(s.id)
+                                            ? 'bg-teal-accent/20 border border-teal-accent/30'
+                                            : 'hover:bg-white/5 border border-transparent'
+                                            }`}
+                                    >
+                                        <span className="text-sm text-gray-300">{s.name}</span>
+                                        {newBot.sourceIds.includes(s.id) && <div className="w-2 h-2 rounded-full bg-teal-accent"></div>}
+                                    </div>
+                                ))}
+                                {(!sources || sources.length === 0) && <div className="text-gray-500 text-sm p-2">No sources available. Create one first.</div>}
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="text-xs text-gray-400 uppercase tracking-wider block mb-1">Assign Campaign workflow</label>
+                            <select
+                                value={newBot.campaignId}
+                                onChange={(e) => setNewBot({ ...newBot, campaignId: e.target.value })}
+                                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-teal-accent/50 appearance-none cursor-pointer"
+                            >
+                                <option value="">Select a campaign...</option>
+                                {campaigns?.map((c: any) => (
+                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div>
+                            <label className="text-xs text-gray-400 uppercase tracking-wider block mb-1">Proxy String (Optional)</label>
                             <input
                                 type="text"
-                                value={newBot.username}
-                                onChange={(e) => setNewBot({ ...newBot, username: e.target.value })}
+                                value={newBot.proxyUrl}
+                                onChange={(e) => setNewBot({ ...newBot, proxyUrl: e.target.value })}
+                                placeholder="http://user:pass@host:port"
                                 className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-teal-accent/50"
                             />
                         </div>
-                        <div>
-                            <label className="text-xs text-gray-400 uppercase tracking-wider block mb-1">Password</label>
-                            <div className="relative">
-                                <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-                                <input
-                                    type="password"
-                                    value={newBot.password}
-                                    onChange={(e) => setNewBot({ ...newBot, password: e.target.value })}
-                                    className="w-full bg-black/40 border border-white/10 rounded-xl pl-9 pr-4 py-3 text-white focus:outline-none focus:border-teal-accent/50"
-                                />
-                            </div>
+
+                        <div className="pt-4 flex justify-end gap-3">
+                            <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-gray-400 hover:text-white transition-colors">Cancel</button>
+                            <button
+                                disabled={createMutation.isPending || updateSourcesMutation.isPending}
+                                onClick={handleSaveBot}
+                                className="px-6 py-2 bg-white text-black font-bold rounded-lg shadow-lg hover:bg-gray-200 transition-all disabled:opacity-50"
+                            >
+                                {createMutation.isPending || updateSourcesMutation.isPending ? 'Saving...' : (editingBot ? 'Save Changes' : 'Deploy Identity')}
+                            </button>
                         </div>
                     </div>
-
-                    <div>
-                        <label className="text-xs text-gray-400 uppercase tracking-wider block mb-1">Platform</label>
-                        <div className="grid grid-cols-2 gap-2">
-                            {['NEXTDOOR', 'REDDIT'].map(p => (
-                                <button
-                                    key={p}
-                                    onClick={() => setNewBot({ ...newBot, platform: p })}
-                                    className={`p-3 rounded-lg border text-sm font-medium transition-all ${newBot.platform === p
-                                        ? `bg-teal-500/20 border-teal-500 text-white shadow-[0_0_15px_rgba(20,184,166,0.3)]`
-                                        : 'bg-black/40 border-white/10 text-gray-400 hover:bg-white/5'
-                                        }`}
-                                >
-                                    {p}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="space-y-2">
-                        <label className="text-xs text-gray-400 uppercase tracking-wider block mb-1">
-                            Assign Sources (Max 4) <span className="text-teal-accent ml-2">{newBot.sourceIds.length}/4 selected</span>
-                        </label>
-                        <div className="max-h-40 overflow-y-auto border border-white/10 rounded-xl bg-black/40 p-2 space-y-1">
-                            {sources?.filter((s: any) => s.type === newBot.platform).map((s: any) => (
-                                <div
-                                    key={s.id}
-                                    onClick={() => toggleSourceSelection(s.id)}
-                                    className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${newBot.sourceIds.includes(s.id)
-                                            ? 'bg-teal-accent/20 border border-teal-accent/30'
-                                            : 'hover:bg-white/5 border border-transparent'
-                                        }`}
-                                >
-                                    <span className="text-sm text-gray-300">{s.name}</span>
-                                    {newBot.sourceIds.includes(s.id) && <div className="w-2 h-2 rounded-full bg-teal-accent"></div>}
+                </Modal>
+{/* History Modal */}
+            <Modal isOpen={isHistoryOpen} onClose={() => setIsHistoryOpen(false)} title="Monitoring History">
+                <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+                    {isLoadingCandidates ? (
+                        <div className="flex justify-center p-8"><Loader2 className="animate-spin text-teal-accent" /></div>
+                    ) : candidates?.length === 0 ? (
+                        <div className="text-center text-gray-500 py-10">No messages scraped yet.</div>
+                    ) : (
+                        candidates?.map((c: any) => (
+                            <div key={c.id} className="bg-white/5 p-4 rounded-xl border border-white/10 text-sm">
+                                <div className="flex justify-between mb-2">
+                                    <span className="font-bold text-white max-w-[70%] truncate">{c.title || "No Title"}</span>
+                                    <span className="text-xs text-gray-400">{new Date(c.createdAt).toLocaleTimeString()}</span>
                                 </div>
-                            ))}
-                            {(!sources || sources.length === 0) && <div className="text-gray-500 text-sm p-2">No sources available. Create one first.</div>}
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="text-xs text-gray-400 uppercase tracking-wider block mb-1">Assign Campaign workflow</label>
-                        <select
-                            value={newBot.campaignId}
-                            onChange={(e) => setNewBot({ ...newBot, campaignId: e.target.value })}
-                            className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-teal-accent/50 appearance-none cursor-pointer"
-                        >
-                            <option value="">Select a campaign...</option>
-                            {campaigns?.map((c: any) => (
-                                <option key={c.id} value={c.id}>{c.name}</option>
-                            ))}
-                        </select>
-                    </div>
-
-                    <div>
-                        <label className="text-xs text-gray-400 uppercase tracking-wider block mb-1">Proxy String (Optional)</label>
-                        <input
-                            type="text"
-                            value={newBot.proxyUrl}
-                            onChange={(e) => setNewBot({ ...newBot, proxyUrl: e.target.value })}
-                            placeholder="http://user:pass@host:port"
-                            className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-teal-accent/50"
-                        />
-                    </div>
-
-                    <div className="pt-4 flex justify-end gap-3">
-                        <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-gray-400 hover:text-white transition-colors">Cancel</button>
-                        <button
-                            disabled={createMutation.isPending || updateSourcesMutation.isPending}
-                            onClick={handleSaveBot}
-                            className="px-6 py-2 bg-white text-black font-bold rounded-lg shadow-lg hover:bg-gray-200 transition-all disabled:opacity-50"
-                        >
-                            {createMutation.isPending || updateSourcesMutation.isPending ? 'Saving...' : (editingBot ? 'Save Changes' : 'Deploy Identity')}
-                        </button>
-                    </div>
+                                <p className="text-gray-400 mb-3">{c.body}</p>
+                                <div className="flex items-center gap-2">
+                                    {c.lead ? (
+                                        <span className="text-green-400 text-xs bg-green-500/10 px-2 py-1 rounded border border-green-500/20">Qualified Lead</span>
+                                    ) : (
+                                        <span className="text-gray-500 text-xs bg-white/5 px-2 py-1 rounded">Disqualified</span>
+                                    )}
+                                    <span className="text-xs text-gray-600">{c.source?.name}</span>
+                                </div>
+                            </div>
+                        ))
+                    )}
                 </div>
             </Modal>
-        </div>
+        </div >
     );
 }

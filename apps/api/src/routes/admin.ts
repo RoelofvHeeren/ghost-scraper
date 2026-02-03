@@ -2,9 +2,34 @@ import { FastifyInstance } from "fastify";
 import { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { db } from "../lib/db.js";
+import { Queue } from "bullmq";
+import { QUEUES } from "@ghost-scraper/shared";
 
 export async function adminRoutes(app: FastifyInstance) {
     const server = app.withTypeProvider<ZodTypeProvider>();
+
+    // --- Candidates (Raw History) ---
+    server.get("/candidates", {
+        schema: {
+            querystring: z.object({
+                limit: z.coerce.number().default(50),
+                botId: z.string().optional()
+            })
+        }
+    }, async (req) => {
+        const { limit, botId } = req.query;
+        // If filtering by botId, currently candidates link to source, and bots link to source.
+        // For MVP, we'll just show all candidates, or filter by source if we track it.
+        // Candidates have `sourceId`.
+
+        return db.leadCandidate.findMany({
+            take: limit,
+            orderBy: { createdAt: "desc" },
+            include: { source: true, lead: true }
+        });
+    });
+    const pollQueue = new Queue(QUEUES.POLL_SOURCES, { connection: { host: process.env.REDIS_HOST || "localhost", port: 6379 } });
+
 
     // --- Clients ---
     server.get("/clients", async () => {
@@ -100,6 +125,39 @@ export async function adminRoutes(app: FastifyInstance) {
             where: { id: bot.id },
             include: { assignedSources: { include: { source: true } } }
         });
+    });
+
+    server.post("/bot-accounts/:id/start", {
+        schema: {
+            params: z.object({ id: z.string() })
+        }
+    }, async (req) => {
+        const { id } = req.params;
+
+        // Auto-assign source if needed
+        const bot = await db.botAccount.findUnique({
+            where: { id },
+            include: { assignedSources: true }
+        });
+
+        if (bot && bot.assignedSources.length === 0) {
+            let source = await db.source.findFirst({ where: { type: bot.platform } });
+            if (!source) {
+                source = await db.source.create({
+                    data: {
+                        name: `${bot.platform} Feed`,
+                        type: bot.platform,
+                        config: {}
+                    }
+                });
+            }
+            await db.botSourceAssignment.create({
+                data: { botId: id, sourceId: source.id, priority: 0 }
+            });
+        }
+
+        await pollQueue.add("manual-trigger", { botId: id });
+        return { message: "Monitoring started" };
     });
 
     // Update bot source assignments

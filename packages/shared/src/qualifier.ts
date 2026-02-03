@@ -11,11 +11,34 @@ export interface QualifierProfile {
     intentKeywords?: string[];
     urgencyKeywords?: string[];
     threshold?: number;
+    llmCriteria?: string; // If present, use LLM
 }
 
-export function qualifyCandidate(text: string, profile: QualifierProfile): ScoringResult {
+import { GeminiService } from "./services/GeminiService.js";
+
+const llmService = new GeminiService();
+
+export async function qualifyCandidate(text: string, profile: QualifierProfile): Promise<ScoringResult> {
+
     const lower = text.toLowerCase();
     const threshold = profile.threshold || 20;
+
+    // 0. LLM Check (if configured)
+    if (profile.llmCriteria) {
+        // Skip hard reject for now if using LLM, or keep it as a pre-filter?
+        // Let's keep exclusion list as a pre-filter to save tokens.
+        for (const bad of profile.exclude) {
+            if (lower.includes(bad.toLowerCase())) {
+                return { score: 0, reasons: [`exclude:${bad}`], isQualified: false };
+            }
+        }
+
+        const llmResult = await llmService.evaluateMessage(text, profile.llmCriteria);
+        return {
+            ...llmResult,
+            reasons: [llmResult.reason]
+        };
+    }
 
     // 1. Exclusion Check (Hard Reject)
     for (const bad of profile.exclude) {
