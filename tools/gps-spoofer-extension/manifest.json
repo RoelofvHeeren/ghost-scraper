@@ -1,0 +1,55 @@
+{
+    "manifest_version": 3,
+    "name": "Ghost GPS Spoofer v10.29",
+    "version": "10.29",
+    "description": "The Fix: Resolves Illegal Invocation crash in XHR.",
+    "permissions": [
+        "storage",
+        "browsingData",
+        "cookies",
+        "declarativeNetRequest"
+    ],
+    "host_permissions": [
+        "*://*.nextdoor.com/*",
+        "https://nextdoor.com/*",
+        "<all_urls>"
+    ],
+    "action": {
+        "default_popup": "popup.html"
+    },
+    "declarative_net_request": {
+        "rule_resources": [
+            {
+                "id": "ruleset_1",
+                "enabled": true,
+                "path": "rules.json"
+            }
+        ]
+    },
+    "content_scripts": [
+        {
+            "world": "ISOLATED",
+            "matches": [
+                "<all_urls>"
+            ],
+            "js": [
+                "content_isolated.js"
+            ],
+            "run_at": "document_start",
+            "all_frames": true,
+            "match_about_blank": true
+        },
+        {
+            "world": "MAIN",
+            "matches": [
+                "<all_urls>"
+            ],
+            "js": [
+                "main_world.js"
+            ],
+            "run_at": "document_start",
+            "all_frames": true,
+            "match_about_blank": true
+        }
+    ]
+}

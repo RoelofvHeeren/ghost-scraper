@@ -1,7 +1,8 @@
 import { Job } from "bullmq";
 import { db } from "../lib/db.js";
 import { NextdoorScraper } from "@ghost-scraper/shared";
-import { processQueue } from "../lib/queues.js";
+import { processQueue, publishBotLog } from "../lib/queues.js";
+
 
 /**
  * Poll job - now processes ALL sources assigned to a bot in a single session
@@ -24,16 +25,18 @@ export async function pollBotJob(job: Job) {
         return;
     }
 
+
     if (!bot.assignedSources || bot.assignedSources.length === 0) {
+        await publishBotLog(botId, `⚠️ No sources assigned, stopping.`, 'warning');
         console.log(`Bot ${botId} has no assigned sources`);
         return;
     }
+
 
     if (bot.platform === "NEXTDOOR") {
         const scraper = new NextdoorScraper();
 
         try {
-            // Initialize once with bot's details
             await scraper.init({
                 sessionData: bot.sessionData,
                 proxyUrl: bot.proxyUrl || undefined,
@@ -41,9 +44,12 @@ export async function pollBotJob(job: Job) {
                 lng: bot.longitude
             });
 
+            await publishBotLog(botId, `🔄 Initializing scraper...`);
+
             // Login once
             const isLoggedIn = await scraper.login(bot.username, bot.password || "");
             if (!isLoggedIn) {
+                await publishBotLog(botId, `❌ Login failed for ${bot.username}`, 'error');
                 console.log(`Bot ${bot.username} login failed`);
                 await db.botAccount.update({
                     where: { id: bot.id },
@@ -51,6 +57,7 @@ export async function pollBotJob(job: Job) {
                 });
                 return;
             }
+
 
             // Save session after successful login
             const newCookies = await scraper.getCookies();
@@ -69,10 +76,12 @@ export async function pollBotJob(job: Job) {
                 if (!source.enabled) continue;
 
                 console.log(`🤖 Bot ${bot.username} scraping: ${source.name}`);
+                await publishBotLog(botId, `🔎 Scraping source: ${source.name}`);
 
                 try {
                     const posts = await scraper.scrapeSource(source.config);
                     console.log(`✅ Scraped ${posts.length} posts from ${source.name}`);
+                    await publishBotLog(botId, `✅ Found ${posts.length} posts in ${source.name}`, 'success');
                     totalScraped += posts.length;
 
                     for (const post of posts) {
@@ -92,24 +101,28 @@ export async function pollBotJob(job: Job) {
 
                         await processQueue.add("process-candidate", { candidateId: candidate.id });
                     }
-                } catch (sourceError) {
-                    console.error(`❌ Source Error (${source.name}):`, sourceError);
+                    await processQueue.add("process-candidate", { candidateId: candidate.id });
                 }
+
+                console.error(`❌ Source Error (${source.name}):`, sourceError);
+                await publishBotLog(botId, `❌ Error scraping ${source.name}: ${sourceError.message}`, 'error');
             }
+        }
 
             // Update bot scrape count
             await db.botAccount.update({
-                where: { id: bot.id },
-                data: { dailyScrapeCount: { increment: totalScraped } }
-            });
+            where: { id: bot.id },
+            data: { dailyScrapeCount: { increment: totalScraped } }
+        });
 
-            console.log(`🏁 Bot ${bot.username} finished. Total posts: ${totalScraped}`);
+        console.log(`🏁 Bot ${bot.username} finished. Total posts: ${totalScraped}`);
+        await publishBotLog(botId, `🏁 Job finished. Total scraped: ${totalScraped}`, 'success');
 
-        } catch (error) {
-            console.error(`💥 Bot Job Failed (${botId}):`, error);
-        } finally {
-            await scraper.close();
-        }
+    } catch (error: any) {
+        console.error(`💥 Bot Job Failed (${botId}):`, error);
+        await publishBotLog(botId, `💥 Critical Job Error: ${error.message}`, 'error');
+    } finally {
+        await scraper.close();
     }
 }
 

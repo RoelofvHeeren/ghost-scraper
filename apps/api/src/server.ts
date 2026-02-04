@@ -4,6 +4,7 @@ import { buildApp } from "./app.js";
 import { Server } from "socket.io";
 import { setSocketServer } from "./lib/sockets.js";
 import { AccountFactory } from "@ghost-scraper/shared";
+import { initLogStream } from "./services/LogStreamService.js";
 
 dotenv.config({ path: "../../.env" });
 
@@ -23,6 +24,7 @@ async function main() {
         });
 
         setSocketServer(io);
+        initLogStream();
 
         io.on("connection", (socket) => {
             console.log("Client connected:", socket.id);

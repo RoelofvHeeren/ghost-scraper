@@ -13,3 +13,14 @@ export const replyQueue = new Queue(QUEUES.POST_REPLY, { connection: connection 
 
 // Connection for Workers
 export const redisConnection = connection;
+
+export async function publishBotLog(botId: string, message: string, type: 'info' | 'error' | 'success' | 'warning' = 'info') {
+    const payload = JSON.stringify({
+        botId,
+        message,
+        type,
+        timestamp: new Date().toISOString()
+    });
+    // Publish to a specific channel that the API will listen to
+    await connection.publish("bot-logs", payload);
+}
