@@ -123,19 +123,20 @@ export async function pollBotJob(job: Job) {
             await scraper.close();
         }
     }
+}
 
-    // Legacy function for backward compatibility - will be deprecated
-    export async function pollSourceJob(job: Job) {
-        console.warn("pollSourceJob is deprecated, use pollBotJob instead");
-        const { sourceId } = job.data;
+// Legacy function for backward compatibility - will be deprecated
+export async function pollSourceJob(job: Job) {
+    console.warn("pollSourceJob is deprecated, use pollBotJob instead");
+    const { sourceId } = job.data;
 
-        // Find a bot assigned to this source
-        const assignment = await db.botSourceAssignment.findFirst({
-            where: { sourceId },
-            include: { bot: true }
-        }) as any;
+    // Find a bot assigned to this source
+    const assignment = await db.botSourceAssignment.findFirst({
+        where: { sourceId },
+        include: { bot: true }
+    }) as any;
 
-        if (assignment) {
-            return pollBotJob({ ...job, data: { botId: assignment.bot.id } } as any);
-        }
+    if (assignment) {
+        return pollBotJob({ ...job, data: { botId: assignment.bot.id } } as any);
     }
+}
