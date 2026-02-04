@@ -29,7 +29,9 @@ export async function adminRoutes(app: FastifyInstance) {
             include: { source: true, lead: true }
         });
     });
-    const connection = new Redis(process.env.REDIS_URL || "redis://localhost:6379");
+    const connection = new Redis(process.env.REDIS_URL || "redis://localhost:6379", {
+        maxRetriesPerRequest: null
+    });
     const pollQueue = new Queue(QUEUES.POLL_SOURCES, { connection: connection as any });
 
 
