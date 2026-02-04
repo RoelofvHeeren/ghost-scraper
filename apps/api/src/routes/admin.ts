@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { db } from "../lib/db.js";
+import { Redis } from "ioredis";
 import { Queue } from "bullmq";
 import { QUEUES } from "@ghost-scraper/shared";
 
@@ -28,7 +29,8 @@ export async function adminRoutes(app: FastifyInstance) {
             include: { source: true, lead: true }
         });
     });
-    const pollQueue = new Queue(QUEUES.POLL_SOURCES, { connection: { host: process.env.REDIS_HOST || "localhost", port: 6379 } });
+    const connection = new Redis(process.env.REDIS_URL || "redis://localhost:6379");
+    const pollQueue = new Queue(QUEUES.POLL_SOURCES, { connection });
 
 
     // --- Clients ---
