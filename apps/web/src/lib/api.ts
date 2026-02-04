@@ -31,5 +31,5 @@ export const apiSvc = {
     getLeads: () => api.get("/leads").then(r => r.data),
 
     // Candidates
-    getCandidates: () => api.get("/admin/candidates").then(r => r.data),
+    getCandidates: (botId?: string) => api.get("/admin/candidates", { params: { botId } }).then(r => r.data),
 };

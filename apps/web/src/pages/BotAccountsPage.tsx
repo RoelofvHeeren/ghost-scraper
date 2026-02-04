@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Modal } from "../components/Modal";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiSvc } from "../lib/api";
-import { Plus, Bot, Power, Shield, MapPin, Edit2, Play, MessageSquare, Lock, UserPlus, Share2, PlayCircle, Loader2, Activity } from "lucide-react";
+import { Plus, Power, Shield, MapPin, Edit2, Play, MessageSquare, Lock, UserPlus, PlayCircle, Loader2, Activity } from "lucide-react";
 import { LiveBotMonitor } from "../components/LiveBotMonitor";
 import { socketSvc } from "../lib/sockets";
 import { useEffect } from "react";
@@ -137,7 +137,7 @@ export function BotAccountsPage() {
             const handleLog = (data: any) => {
                 const timestamp = new Date().toLocaleTimeString();
                 const icon = data.type === 'error' ? '❌' : data.type === 'success' ? '✅' : 'ℹ️';
-                setLiveLogs(prev => [...prev.slice(-100), `${icon} ${data.message}`]);
+                setLiveLogs(prev => [...prev.slice(-100), `[${timestamp}] ${icon} ${data.message}`]);
             };
 
             const handleScreenshot = (base64: string) => {
