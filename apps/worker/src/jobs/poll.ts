@@ -101,43 +101,41 @@ export async function pollBotJob(job: Job) {
 
                         await processQueue.add("process-candidate", { candidateId: candidate.id });
                     }
-                    await processQueue.add("process-candidate", { candidateId: candidate.id });
+                } catch (sourceError: any) {
+                    console.error(`❌ Source Error (${source.name}):`, sourceError);
+                    await publishBotLog(botId, `❌ Error scraping ${source.name}: ${sourceError.message}`, 'error');
                 }
-
-                console.error(`❌ Source Error (${source.name}):`, sourceError);
-                await publishBotLog(botId, `❌ Error scraping ${source.name}: ${sourceError.message}`, 'error');
             }
-        }
 
             // Update bot scrape count
             await db.botAccount.update({
-            where: { id: bot.id },
-            data: { dailyScrapeCount: { increment: totalScraped } }
-        });
+                where: { id: bot.id },
+                data: { dailyScrapeCount: { increment: totalScraped } }
+            });
 
-        console.log(`🏁 Bot ${bot.username} finished. Total posts: ${totalScraped}`);
-        await publishBotLog(botId, `🏁 Job finished. Total scraped: ${totalScraped}`, 'success');
+            console.log(`🏁 Bot ${bot.username} finished. Total posts: ${totalScraped}`);
+            await publishBotLog(botId, `🏁 Job finished. Total scraped: ${totalScraped}`, 'success');
 
-    } catch (error: any) {
-        console.error(`💥 Bot Job Failed (${botId}):`, error);
-        await publishBotLog(botId, `💥 Critical Job Error: ${error.message}`, 'error');
-    } finally {
-        await scraper.close();
+        } catch (error: any) {
+            console.error(`💥 Bot Job Failed (${botId}):`, error);
+            await publishBotLog(botId, `💥 Critical Job Error: ${error.message}`, 'error');
+        } finally {
+            await scraper.close();
+        }
     }
-}
 
-// Legacy function for backward compatibility - will be deprecated
-export async function pollSourceJob(job: Job) {
-    console.warn("pollSourceJob is deprecated, use pollBotJob instead");
-    const { sourceId } = job.data;
+    // Legacy function for backward compatibility - will be deprecated
+    export async function pollSourceJob(job: Job) {
+        console.warn("pollSourceJob is deprecated, use pollBotJob instead");
+        const { sourceId } = job.data;
 
-    // Find a bot assigned to this source
-    const assignment = await db.botSourceAssignment.findFirst({
-        where: { sourceId },
-        include: { bot: true }
-    }) as any;
+        // Find a bot assigned to this source
+        const assignment = await db.botSourceAssignment.findFirst({
+            where: { sourceId },
+            include: { bot: true }
+        }) as any;
 
-    if (assignment) {
-        return pollBotJob({ ...job, data: { botId: assignment.bot.id } } as any);
+        if (assignment) {
+            return pollBotJob({ ...job, data: { botId: assignment.bot.id } } as any);
+        }
     }
-}
