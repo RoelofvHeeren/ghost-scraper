@@ -29,8 +29,12 @@ export async function adminRoutes(app: FastifyInstance) {
             include: { source: true, lead: true }
         });
     });
-    const connection = new Redis(process.env.REDIS_URL || "redis://localhost:6379", {
-        maxRetriesPerRequest: null
+    // Parse REDIS_URL to extract credentials
+    const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
+    const connection = new Redis(redisUrl, {
+        maxRetriesPerRequest: null,
+        enableReadyCheck: false,
+        lazyConnect: false
     });
     const pollQueue = new Queue(QUEUES.POLL_SOURCES, { connection: connection as any });
 
