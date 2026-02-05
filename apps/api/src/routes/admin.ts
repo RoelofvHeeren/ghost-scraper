@@ -29,12 +29,13 @@ export async function adminRoutes(app: FastifyInstance) {
             include: { source: true, lead: true }
         });
     });
-    // Parse REDIS_URL to extract credentials
+    // Parse REDIS_URL to extract credentials - Railway format: redis://default:password@host:port
     const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
     const connection = new Redis(redisUrl, {
         maxRetriesPerRequest: null,
         enableReadyCheck: false,
-        lazyConnect: false
+        // Disable TLS verification for Railway's internal Redis
+        tls: redisUrl.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined
     });
     const pollQueue = new Queue(QUEUES.POLL_SOURCES, { connection: connection as any });
 

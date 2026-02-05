@@ -2,8 +2,13 @@ import { Queue, Worker } from "bullmq";
 import { Redis } from "ioredis";
 import { QUEUES } from "@ghost-scraper/shared";
 
-const connection = new Redis(process.env.REDIS_URL || "redis://localhost:6379", {
-    maxRetriesPerRequest: null
+// Parse REDIS_URL to extract credentials - Railway format: redis://default:password@host:port
+const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
+const connection = new Redis(redisUrl, {
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false,
+    // Disable TLS verification for Railway's internal Redis
+    tls: redisUrl.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined
 });
 
 // Queues that we produce to
