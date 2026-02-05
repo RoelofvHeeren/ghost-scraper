@@ -1,9 +1,13 @@
 import { Redis } from "ioredis";
 import { emitToSession } from "../lib/sockets.js";
 
-// Separate connection for subscribing
-const subscriber = new Redis(process.env.REDIS_URL || "redis://localhost:6379", {
-    maxRetriesPerRequest: null
+// Separate connection for subscribing - Railway format: redis://default:password@host:port
+const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
+const subscriber = new Redis(redisUrl, {
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false,
+    // Disable TLS verification for Railway's internal Redis
+    tls: redisUrl.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined
 });
 
 export function initLogStream() {
