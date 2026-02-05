@@ -12,7 +12,7 @@ const connection = new Redis({
     password: parsedUrl.password || undefined,
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
-    lazyConnect: false,
+    lazyConnect: true,
     tls: redisUrl.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined
 });
 

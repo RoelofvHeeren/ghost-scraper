@@ -39,7 +39,7 @@ export async function adminRoutes(app: FastifyInstance) {
         password: parsedUrl.password || undefined,
         maxRetriesPerRequest: null,
         enableReadyCheck: false,
-        lazyConnect: false,
+        lazyConnect: true,
         tls: redisUrl.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined
     });
     const pollQueue = new Queue(QUEUES.POLL_SOURCES, { connection: connection as any });
