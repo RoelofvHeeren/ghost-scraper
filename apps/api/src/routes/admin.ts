@@ -32,16 +32,20 @@ export async function adminRoutes(app: FastifyInstance) {
     // Parse REDIS_URL and extract credentials explicitly
     const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
     const parsedUrl = new URL(redisUrl);
-    const connection = new Redis({
+
+    const redisOptions: any = {
         host: parsedUrl.hostname,
         port: parseInt(parsedUrl.port) || 6379,
-        username: parsedUrl.username || undefined,
-        password: parsedUrl.password || undefined,
         maxRetriesPerRequest: null,
         enableReadyCheck: false,
         lazyConnect: true,
         tls: redisUrl.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined
-    });
+    };
+
+    if (parsedUrl.username) redisOptions.username = parsedUrl.username;
+    if (parsedUrl.password) redisOptions.password = parsedUrl.password;
+
+    const connection = new Redis(redisOptions);
     const pollQueue = new Queue(QUEUES.POLL_SOURCES, { connection: connection as any });
 
 

@@ -4,16 +4,20 @@ import { emitToSession } from "../lib/sockets.js";
 // Parse REDIS_URL and extract credentials explicitly for subscriber
 const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
 const parsedUrl = new URL(redisUrl);
-const subscriber = new Redis({
+
+const redisOptions: any = {
     host: parsedUrl.hostname,
     port: parseInt(parsedUrl.port) || 6379,
-    username: parsedUrl.username || undefined,
-    password: parsedUrl.password || undefined,
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
     lazyConnect: true,
     tls: redisUrl.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined
-});
+};
+
+if (parsedUrl.username) redisOptions.username = parsedUrl.username;
+if (parsedUrl.password) redisOptions.password = parsedUrl.password;
+
+const subscriber = new Redis(redisOptions);
 
 export function initLogStream() {
     console.log("🔌 Initializing Log Stream Service...");
