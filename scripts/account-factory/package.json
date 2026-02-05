@@ -1,20 +1,13 @@
 {
     "name": "nextdoor-account-factory",
     "version": "1.0.0",
-    "description": "Automated Nextdoor account creation tool",
-    "main": "index.ts",
+    "description": "Automated Nextdoor account creation with Incognia bypass",
+    "main": "nextdoor-stealth.js",
     "scripts": {
-        "start": "ts-node index.ts"
+        "create": "node nextdoor-stealth.js",
+        "test": "node nextdoor-stealth.js"
     },
     "dependencies": {
-        "puppeteer": "^21.0.0",
-        "puppeteer-extra": "^3.3.6",
-        "puppeteer-extra-plugin-stealth": "^2.11.2",
-        "ts-node": "^10.9.1",
-        "typescript": "^5.0.0"
-    },
-    "devDependencies": {
-        "@types/node": "^20.0.0",
-        "@types/puppeteer": "^7.0.4"
+        "playwright": "^1.57.0"
     }
 }

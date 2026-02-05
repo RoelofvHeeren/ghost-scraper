@@ -1,8 +1,8 @@
 {
     "manifest_version": 3,
-    "name": "Ghost GPS Spoofer v10.29",
-    "version": "10.29",
-    "description": "The Fix: Resolves Illegal Invocation crash in XHR.",
+    "name": "Ghost GPS Spoofer v10.33",
+    "version": "10.33",
+    "description": "The Phantom: Hides from Incognia + allows fraud detection.",
     "permissions": [
         "storage",
         "browsingData",

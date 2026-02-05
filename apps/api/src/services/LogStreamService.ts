@@ -1,12 +1,17 @@
 import { Redis } from "ioredis";
 import { emitToSession } from "../lib/sockets.js";
 
-// Separate connection for subscribing - Railway format: redis://default:password@host:port
+// Parse REDIS_URL and extract credentials explicitly for subscriber
 const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
-const subscriber = new Redis(redisUrl, {
+const parsedUrl = new URL(redisUrl);
+const subscriber = new Redis({
+    host: parsedUrl.hostname,
+    port: parseInt(parsedUrl.port) || 6379,
+    username: parsedUrl.username || undefined,
+    password: parsedUrl.password || undefined,
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
-    // Disable TLS verification for Railway's internal Redis
+    lazyConnect: false,
     tls: redisUrl.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined
 });
 
