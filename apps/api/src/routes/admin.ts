@@ -43,7 +43,11 @@ export async function adminRoutes(app: FastifyInstance) {
     };
 
     if (parsedUrl.username) redisOptions.username = parsedUrl.username;
-    if (parsedUrl.password) redisOptions.password = parsedUrl.password;
+    if (parsedUrl.password) {
+        redisOptions.password = parsedUrl.password;
+    } else if (process.env.REDIS_PASSWORD) {
+        redisOptions.password = process.env.REDIS_PASSWORD;
+    }
 
     const connection = new Redis(redisOptions);
     const pollQueue = new Queue(QUEUES.POLL_SOURCES, { connection: connection as any });

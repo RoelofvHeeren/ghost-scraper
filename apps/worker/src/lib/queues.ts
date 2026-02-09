@@ -16,7 +16,11 @@ const redisOptions: any = {
 };
 
 if (parsedUrl.username) redisOptions.username = parsedUrl.username;
-if (parsedUrl.password) redisOptions.password = parsedUrl.password;
+if (parsedUrl.password) {
+    redisOptions.password = parsedUrl.password;
+} else if (process.env.REDIS_PASSWORD) {
+    redisOptions.password = process.env.REDIS_PASSWORD;
+}
 
 const connection = new Redis(redisOptions);
 
