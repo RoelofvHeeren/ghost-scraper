@@ -101,11 +101,41 @@ export class NextdoorScraper {
         console.log(`📡 Scraping URL: ${url}`);
         await this.page.goto(url, { waitUntil: 'networkidle2' });
 
-        // Wait for posts to load
-        const postSelector = '[data-testid="post-container"]';
-        try {
-            await this.page.waitForSelector(postSelector, { timeout: 15000 });
-        } catch (e) {
+        // Wait a bit for dynamic content to load
+        await new Promise(r => setTimeout(r, 3000));
+
+        // Try multiple selectors for posts - Nextdoor changes these frequently
+        const postSelectors = [
+            '[data-testid="post-container"]',
+            '[data-testid="activity-feed-item"]',
+            'article',
+            '[class*="post-card"]',
+            '[class*="PostCard"]',
+            '[class*="feed-item"]',
+            '[class*="FeedItem"]',
+            '[class*="story-card"]',
+            '[class*="StoryCard"]'
+        ];
+
+        let postSelector = '';
+        for (const selector of postSelectors) {
+            try {
+                const count = await this.page.$$eval(selector, els => els.length);
+                if (count > 0) {
+                    console.log(`✅ Found ${count} elements with selector: ${selector}`);
+                    postSelector = selector;
+                    break;
+                }
+            } catch (e) {
+                // Selector not found, try next
+            }
+        }
+
+        if (!postSelector) {
+            // Diagnostic: log what we DO see on the page
+            const bodyHtml = await this.page.evaluate(() => document.body.innerHTML.slice(0, 5000));
+            console.log("⚠️ No known post selectors found. Page HTML sample:");
+            console.log(bodyHtml.slice(0, 2000));
             console.log("⚠️ No posts found or timeout.");
             return [];
         }
@@ -117,27 +147,38 @@ export class NextdoorScraper {
             await new Promise(r => setTimeout(r, 2000 + Math.random() * 1000));
         }
 
-        // Extract
-        const posts = await this.page.evaluate(() => {
-            const containers = Array.from(document.querySelectorAll('[data-testid="post-container"]'));
+        // Extract using the found selector
+        const posts = await this.page.evaluate((selector) => {
+            const containers = Array.from(document.querySelectorAll(selector));
             return containers.map(el => {
-                const linkEl = el.querySelector('a[href*="/p/"]');
-                const bodyEl = el.querySelector('[data-testid="post-body"], [class*="PostBody"]');
-                const authorEl = el.querySelector('[class*="AuthorName"]');
-                const titleEl = el.querySelector('h1, h2, h3, [class*="PostHeader"]');
+                // Try multiple selectors for each field
+                const linkEl = el.querySelector('a[href*="/p/"]') || el.querySelector('a[href*="/post/"]');
+                const bodyEl = el.querySelector('[data-testid="post-body"]') ||
+                    el.querySelector('[class*="PostBody"]') ||
+                    el.querySelector('[class*="post-body"]') ||
+                    el.querySelector('p');
+                const authorEl = el.querySelector('[class*="AuthorName"]') ||
+                    el.querySelector('[class*="author"]') ||
+                    el.querySelector('[class*="Author"]');
+                const titleEl = el.querySelector('h1, h2, h3') ||
+                    el.querySelector('[class*="PostHeader"]') ||
+                    el.querySelector('[class*="title"]');
+
+                const href = linkEl?.getAttribute('href') || '';
+                const postId = href.split('/').filter(Boolean).pop() || Math.random().toString(36);
 
                 return {
-                    externalId: linkEl?.getAttribute('href')?.split('/').pop() || Math.random().toString(36),
-                    url: linkEl ? `https://nextdoor.com${linkEl.getAttribute('href')}` : null,
+                    externalId: postId,
+                    url: linkEl ? `https://nextdoor.com${href}` : null,
                     title: titleEl?.textContent?.trim() || null,
-                    body: bodyEl?.textContent?.trim() || "",
+                    body: bodyEl?.textContent?.trim() || el.textContent?.trim().slice(0, 500) || "",
                     author: authorEl?.textContent?.trim() || null,
                     raw: {
                         htmlSnippet: el.innerHTML.slice(0, 500)
                     }
                 };
             });
-        });
+        }, postSelector);
 
         return posts;
     }
