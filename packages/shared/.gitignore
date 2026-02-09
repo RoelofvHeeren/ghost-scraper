@@ -1,2 +1,0 @@
-# Override root .gitignore to include dist for shared package
-!dist/

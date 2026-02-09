@@ -42,23 +42,50 @@ export class NextdoorScraper {
     async login(username, password) {
         if (!this.page)
             throw new Error("Scraper not initialized");
+        console.log(`🔍 Checking session for ${username}...`);
         await this.page.goto('https://nextdoor.com/news_feed/', { waitUntil: 'networkidle2' });
-        // Check if logged in
-        if (this.page.url().includes('news_feed')) {
+        // Robust check: are we actually on the feed? 
+        // Logged-out often redirects to /login/ or shows a specific "Get Started" container
+        const currentUrl = this.page.url();
+        const isFeedUrl = currentUrl.includes('/news_feed') && !currentUrl.includes('/login');
+        // Also check for a logged-in element
+        const hasUserNav = await this.page.evaluate(() => !!document.querySelector('[data-testid="user-navigation-menu"], .user-nav, [href*="/profile/"]'));
+        if (isFeedUrl && hasUserNav) {
+            console.log("✅ Session is valid.");
             return true;
         }
-        if (!password)
+        if (!password) {
+            console.log("⚠️ Session invalid and no password provided.");
             return false;
+        }
         console.log(`🔑 Logging in as ${username}...`);
         await this.page.goto('https://nextdoor.com/login/', { waitUntil: 'networkidle2' });
-        await this.page.type('input[id*="email"]', username, { delay: 50 });
-        await this.page.type('input[id*="password"]', password, { delay: 50 });
-        await this.page.click('button[id*="signin_button"]');
+        // Wait for selectors to ensure page loaded
         try {
-            await this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
-            return this.page.url().includes('news_feed');
+            await this.page.waitForSelector('input[id*="email"]', { timeout: 10000 });
+            await this.page.type('input[id*="email"]', username, { delay: 50 });
+            await this.page.type('input[id*="password"]', password, { delay: 50 });
+            await this.page.click('button[id*="signin_button"]');
         }
         catch (e) {
+            console.error("❌ Login elements not found", e);
+            return false;
+        }
+        try {
+            await this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
+            const finalUrl = this.page.url();
+            const success = finalUrl.includes('/news_feed') && !finalUrl.includes('/login');
+            if (success) {
+                console.log("✅ Login successful.");
+                return true;
+            }
+            else {
+                console.log(`❌ Login failed. Current URL: ${finalUrl}`);
+                return false;
+            }
+        }
+        catch (e) {
+            console.error("❌ Navigation timeout during login", e);
             return false;
         }
     }
