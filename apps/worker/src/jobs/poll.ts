@@ -20,8 +20,10 @@ export async function pollBotJob(job: Job) {
         }
     }) as any;
 
-    if (!bot || bot.status !== "ACTIVE") {
-        console.log(`Bot ${botId} not found or not active`);
+    const isManual = job.name === "manual-trigger";
+    if (!bot || (bot.status !== "ACTIVE" && !isManual)) {
+        console.log(`Bot ${botId} not found or not active (Status: ${bot?.status || 'NOT_FOUND'})`);
+        await publishBotLog(botId, `⚠️ Bot status is ${bot?.status || 'NOT_FOUND'}, skipping auto-poll.`, 'warning');
         return;
     }
 
