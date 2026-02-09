@@ -42,50 +42,54 @@ export class NextdoorScraper {
     async login(username, password) {
         if (!this.page)
             throw new Error("Scraper not initialized");
-        console.log(`🔍 Checking session for ${username}...`);
-        await this.page.goto('https://nextdoor.com/news_feed/', { waitUntil: 'networkidle2' });
-        // Robust check: are we actually on the feed? 
-        // Logged-out often redirects to /login/ or shows a specific "Get Started" container
+        console.log(`[v4.1] 🔍 Checking session for ${username}...`);
+        try {
+            await this.page.goto('https://nextdoor.com/news_feed/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+            // Small wait for JS to run
+            await new Promise(r => setTimeout(r, 2000));
+        }
+        catch (e) {
+            console.log(`[v4.1] ⚠️ Initial check navigation warning: ${e.message}`);
+        }
+        // Robust check: are we actually on the feed?
         const currentUrl = this.page.url();
         const isFeedUrl = currentUrl.includes('/news_feed') && !currentUrl.includes('/login');
-        // Also check for a logged-in element
-        const hasUserNav = await this.page.evaluate(() => !!document.querySelector('[data-testid="user-navigation-menu"], .user-nav, [href*="/profile/"]'));
+        const hasUserNav = await this.page.evaluate(() => !!document.querySelector('[data-testid="user-navigation-menu"], .user-nav, [href*="/profile/"], [data-testid="post-container"]'));
         if (isFeedUrl && hasUserNav) {
-            console.log("✅ Session is valid.");
+            console.log("[v4.1] ✅ Session is valid.");
             return true;
         }
         if (!password) {
-            console.log("⚠️ Session invalid and no password provided.");
+            console.log("[v4.1] ⚠️ Session invalid and no password provided.");
             return false;
         }
-        console.log(`🔑 Logging in as ${username}...`);
+        console.log(`[v4.1] 🔑 Logging in as ${username}...`);
         await this.page.goto('https://nextdoor.com/login/', { waitUntil: 'networkidle2' });
-        // Wait for selectors to ensure page loaded
         try {
-            await this.page.waitForSelector('input[id*="email"]', { timeout: 10000 });
-            await this.page.type('input[id*="email"]', username, { delay: 50 });
-            await this.page.type('input[id*="password"]', password, { delay: 50 });
-            await this.page.click('button[id*="signin_button"]');
-        }
-        catch (e) {
-            console.error("❌ Login elements not found", e);
-            return false;
-        }
-        try {
-            await this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
+            await this.page.waitForSelector('input[id*="email"]', { timeout: 15000 });
+            await this.page.type('input[id*="email"]', username, { delay: 100 });
+            await this.page.type('input[id*="password"]', password, { delay: 100 });
+            console.log("[v4.1] 🖱️ Clicking Sign In button...");
+            await Promise.all([
+                this.page.waitForNavigation({ waitUntil: 'load', timeout: 45000 }).catch((e) => console.log(`[v4.1] ⚠️ Nav timeout: ${e.message}`)),
+                this.page.click('button[id*="signin_button"]')
+            ]);
+            // Post-login wait and check
+            await new Promise(r => setTimeout(r, 5000));
             const finalUrl = this.page.url();
-            const success = finalUrl.includes('/news_feed') && !finalUrl.includes('/login');
+            const success = finalUrl.includes('/news_feed') || await this.page.evaluate(() => !!document.querySelector('[data-testid="post-container"]'));
             if (success) {
-                console.log("✅ Login successful.");
+                console.log("[v4.1] ✅ Login successful.");
                 return true;
             }
             else {
-                console.log(`❌ Login failed. Current URL: ${finalUrl}`);
+                console.log(`[v4.1] ❌ Login failed. Current URL: ${finalUrl}`);
+                // Optional: capture screenshot or HTML if we had a way to return it
                 return false;
             }
         }
         catch (e) {
-            console.error("❌ Navigation timeout during login", e);
+            console.error("[v4.1] ❌ Login sequence failed", e);
             return false;
         }
     }

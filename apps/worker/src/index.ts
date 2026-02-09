@@ -1,4 +1,4 @@
-import dotenv from "dotenv"; // Force deploy: Headless fix verification
+import dotenv from "dotenv"; // Force deploy: v4.1.1 Headless fix verification
 import { Worker } from "bullmq";
 import { redisConnection } from "./lib/queues.js";
 import { QUEUES } from "@ghost-scraper/shared";
