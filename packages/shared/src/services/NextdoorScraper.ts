@@ -34,11 +34,10 @@ export class NextdoorScraper {
             args.push(`--proxy-server=${proxy.hostname}:${proxy.port}`);
         }
 
-        const isHeadless = process.env.NEXTDOOR_HEADLESS !== 'false';
-        console.log(`🚀 Launching Browser (Headless: ${isHeadless})`);
+        console.log(`🚀 Launching Browser (Headless: true - FORCED)`);
 
         this.browser = await puppeteer.launch({
-            headless: isHeadless,
+            headless: true,
             executablePath: executablePath(),
             args
         });
