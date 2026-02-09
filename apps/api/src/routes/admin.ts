@@ -149,33 +149,42 @@ export async function adminRoutes(app: FastifyInstance) {
         schema: {
             params: z.object({ id: z.string() })
         }
-    }, async (req) => {
-        const { id } = req.params;
+    }, async (req, reply) => {
+        try {
+            const { id } = req.params;
 
-        // Auto-assign source if needed
-        const bot = await db.botAccount.findUnique({
-            where: { id },
-            include: { assignedSources: true }
-        });
+            // Auto-assign source if needed
+            const bot = await db.botAccount.findUnique({
+                where: { id },
+                include: { assignedSources: true }
+            });
 
-        if (bot && bot.assignedSources.length === 0) {
-            let source = await db.source.findFirst({ where: { type: bot.platform } });
-            if (!source) {
-                source = await db.source.create({
-                    data: {
-                        name: `${bot.platform} Feed`,
-                        type: bot.platform,
-                        config: {}
-                    }
+            if (!bot) {
+                return reply.status(404).send({ error: "Bot not found" });
+            }
+
+            if (bot.assignedSources.length === 0) {
+                let source = await db.source.findFirst({ where: { type: bot.platform } });
+                if (!source) {
+                    source = await db.source.create({
+                        data: {
+                            name: `${bot.platform} Feed`,
+                            type: bot.platform,
+                            config: {}
+                        }
+                    });
+                }
+                await db.botSourceAssignment.create({
+                    data: { botId: id, sourceId: source.id, priority: 0 }
                 });
             }
-            await db.botSourceAssignment.create({
-                data: { botId: id, sourceId: source.id, priority: 0 }
-            });
-        }
 
-        await pollQueue.add("manual-trigger", { botId: id });
-        return { message: "Monitoring started" };
+            await pollQueue.add("manual-trigger", { botId: id });
+            return { message: "Monitoring started" };
+        } catch (error) {
+            console.error("Error starting bot monitoring:", error);
+            return reply.status(500).send({ error: "Internal Server Error", details: (error as any).message });
+        }
     });
 
     // Update bot source assignments
