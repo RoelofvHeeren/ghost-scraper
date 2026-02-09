@@ -24,6 +24,8 @@ export class NextdoorScraper {
         const args = [
             '--no-sandbox',
             '--disable-setuid-sandbox',
+            '--disable-gpu',
+            '--disable-dev-shm-usage',
             '--lang=en-US'
         ];
 
@@ -32,8 +34,11 @@ export class NextdoorScraper {
             args.push(`--proxy-server=${proxy.hostname}:${proxy.port}`);
         }
 
+        const isHeadless = process.env.NEXTDOOR_HEADLESS !== 'false';
+        console.log(`🚀 Launching Browser (Headless: ${isHeadless})`);
+
         this.browser = await puppeteer.launch({
-            headless: process.env.NEXTDOOR_HEADLESS !== 'false',
+            headless: isHeadless,
             executablePath: executablePath(),
             args
         });
