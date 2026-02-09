@@ -38,19 +38,33 @@ export async function adminRoutes(app: FastifyInstance) {
         port: parseInt(parsedUrl.port) || 6379,
         maxRetriesPerRequest: null,
         enableReadyCheck: false,
-        lazyConnect: true,
+        // Remove lazyConnect here as we want BullMQ to handle it or fail fast
         tls: redisUrl.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined
     };
 
-    if (parsedUrl.username) redisOptions.username = parsedUrl.username;
-    if (parsedUrl.password) {
-        redisOptions.password = parsedUrl.password;
-    } else if (process.env.REDIS_PASSWORD) {
-        redisOptions.password = process.env.REDIS_PASSWORD;
+    // Auth logic with Logging
+    console.log(`[Redis Setup] Parsing URL: ${parsedUrl.protocol}//${parsedUrl.host}`);
+
+    if (parsedUrl.username) {
+        redisOptions.username = parsedUrl.username;
+        console.log("[Redis Setup] Using username from URL");
     }
 
-    const connection = new Redis(redisOptions);
-    const pollQueue = new Queue(QUEUES.POLL_SOURCES, { connection: connection as any });
+    if (parsedUrl.password) {
+        redisOptions.password = parsedUrl.password;
+        console.log("[Redis Setup] Using password from URL");
+    } else if (process.env.REDIS_PASSWORD) {
+        redisOptions.password = process.env.REDIS_PASSWORD;
+        console.log("[Redis Setup] Using password from REDIS_PASSWORD env var");
+    } else if (process.env.REDISPASSWORD) {
+        redisOptions.password = process.env.REDISPASSWORD;
+        console.log("[Redis Setup] Using password from REDISPASSWORD env var");
+    } else {
+        console.warn("[Redis Setup] NO PASSWORD FOUND! Connection may fail with NOAUTH.");
+    }
+
+    // Pass options directly to BullMQ
+    const pollQueue = new Queue(QUEUES.POLL_SOURCES, { connection: redisOptions });
 
 
     // --- Clients ---
