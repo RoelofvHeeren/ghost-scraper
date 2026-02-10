@@ -19,6 +19,7 @@ export declare class NextdoorScraper {
     login(username: string, password?: string): Promise<boolean>;
     scrapeSource(sourceConfig: any): Promise<ScrapeResult[]>;
     postComment(postUrl: string, content: string): Promise<boolean>;
+    submitVerification(username: string, password: string, code: string): Promise<boolean>;
     getCookies(): Promise<import("puppeteer-core").Cookie[] | undefined>;
     close(): Promise<void>;
 }

@@ -49,7 +49,7 @@ export class NextdoorScraper {
             await new Promise(r => setTimeout(r, 2000));
         }
         catch (e) {
-            console.log(`[v4.1] ⚠️ Initial check navigation warning: ${e.message}`);
+            console.log(`[v4.2] ⚠️ Initial check navigation warning: ${e.message}`);
         }
         // Robust check: are we actually on the feed?
         const currentUrl = this.page.url();
@@ -69,13 +69,24 @@ export class NextdoorScraper {
             await this.page.waitForSelector('input[id*="email"]', { timeout: 15000 });
             await this.page.type('input[id*="email"]', username, { delay: 100 });
             await this.page.type('input[id*="password"]', password, { delay: 100 });
-            console.log("[v4.1] 🖱️ Clicking Sign In button...");
+            console.log("[v4.2] 🖱️ Clicking Sign In button...");
             await Promise.all([
-                this.page.waitForNavigation({ waitUntil: 'load', timeout: 45000 }).catch((e) => console.log(`[v4.1] ⚠️ Nav timeout: ${e.message}`)),
+                this.page.waitForNavigation({ waitUntil: 'load', timeout: 45000 }).catch((e) => console.log(`[v4.2] ⚠️ Nav timeout: ${e.message}`)),
                 this.page.click('button[id*="signin_button"]')
             ]);
             // Post-login wait and check
             await new Promise(r => setTimeout(r, 5000));
+            // Check for verification screen
+            const isVerification = await this.page.evaluate(() => {
+                return !!document.querySelector('input[name="code"]') ||
+                    !!document.querySelector('input[id*="otp"]') ||
+                    document.body.innerText.includes("Enter the code sent to") ||
+                    document.body.innerText.includes("Verify your device");
+            });
+            if (isVerification) {
+                console.log("[v4.2] 🔒 Verification Code Required");
+                throw new Error("VERIFICATION_REQUIRED");
+            }
             const finalUrl = this.page.url();
             const success = finalUrl.includes('/news_feed') || await this.page.evaluate(() => !!document.querySelector('[data-testid="post-container"]'));
             if (success) {
@@ -202,6 +213,43 @@ export class NextdoorScraper {
             console.error(`❌ Failed to post comment:`, e);
             return false;
         }
+    }
+    async submitVerification(username, password, code) {
+        if (!this.page)
+            throw new Error("Scraper not initialized");
+        console.log(`[v4.2] 🔐 verification flow for ${username}...`);
+        // 1. Perform standard login (triggers code)
+        try {
+            await this.login(username, password);
+        }
+        catch (e) {
+            if (e.message !== "VERIFICATION_REQUIRED") {
+                console.error("[v4.2] ❌ Login failed during verification flow:", e);
+                return false;
+            }
+        }
+        // 2. Enter Code
+        console.log(`[v4.2] 🔢 Entering verification code...`);
+        try {
+            const inputSelector = 'input[name="code"], input[id*="otp"]';
+            await this.page.waitForSelector(inputSelector, { timeout: 10000 });
+            await this.page.type(inputSelector, code, { delay: 100 });
+            // 3. Submit
+            const btnSelector = 'button[type="submit"], button:has-text("Verify"), button:has-text("Submit")';
+            await this.page.click(btnSelector);
+            await this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
+            // 4. Verify Success
+            const finalUrl = this.page.url();
+            const success = finalUrl.includes('/news_feed');
+            if (success) {
+                console.log("[v4.2] ✅ Verification successful!");
+                return true;
+            }
+        }
+        catch (e) {
+            console.error("[v4.2] ❌ Error entering verification code:", e);
+        }
+        return false;
     }
     async getCookies() {
         return await this.page?.cookies();

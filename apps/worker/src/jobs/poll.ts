@@ -49,7 +49,23 @@ export async function pollBotJob(job: Job) {
             await publishBotLog(botId, `🔄 Initializing scraper...`);
 
             // Login once
-            const isLoggedIn = await scraper.login(bot.username, bot.password || "");
+            // Login once
+            let isLoggedIn = false;
+            try {
+                isLoggedIn = await scraper.login(bot.username, bot.password || "");
+            } catch (e: any) {
+                if (e.message === "VERIFICATION_REQUIRED") {
+                    console.log(`Bot ${bot.username} requires verification`);
+                    await publishBotLog(botId, `⚠️ Login requires email verification code`, 'warning');
+                    await db.botAccount.update({
+                        where: { id: bot.id },
+                        data: { status: "VERIFICATION_REQUIRED" } as any
+                    });
+                    return;
+                }
+                throw e;
+            }
+
             if (!isLoggedIn) {
                 await publishBotLog(botId, `❌ Login failed for ${bot.username}`, 'error');
                 console.log(`Bot ${bot.username} login failed`);

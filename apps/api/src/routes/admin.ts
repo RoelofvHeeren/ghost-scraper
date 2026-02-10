@@ -205,6 +205,53 @@ export async function adminRoutes(app: FastifyInstance) {
         }
     });
 
+    server.post("/bot-accounts/:id/verify", {
+        schema: {
+            params: z.object({ id: z.string() }),
+            body: z.object({ code: z.string() })
+        }
+    }, async (req, reply) => {
+        const { id } = req.params;
+        const { code } = req.body;
+
+        const bot = await db.botAccount.findUnique({
+            where: { id }
+        });
+
+        if (!bot) return reply.status(404).send({ error: "Bot not found" });
+
+        const scraper = new NextdoorScraper();
+        try {
+            await scraper.init({
+                proxyUrl: bot.proxyUrl || undefined,
+                lat: bot.latitude,
+                lng: bot.longitude
+            });
+
+            const success = await scraper.submitVerification(bot.username, bot.password || "", code);
+
+            if (success) {
+                const newCookies = await scraper.getCookies();
+                await db.botAccount.update({
+                    where: { id },
+                    data: {
+                        status: "ACTIVE",
+                        sessionData: { cookies: newCookies } as any,
+                        lastLoginAt: new Date()
+                    }
+                });
+                return { success: true };
+            } else {
+                return reply.status(400).send({ error: "Verification failed" });
+            }
+        } catch (e: any) {
+            console.error("Verification error:", e);
+            return reply.status(500).send({ error: e.message });
+        } finally {
+            await scraper.close();
+        }
+    });
+
     // Update bot source assignments
     server.put("/bot-accounts/:id/sources", {
         schema: {
