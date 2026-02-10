@@ -224,8 +224,8 @@ export async function adminRoutes(app: FastifyInstance) {
         try {
             await scraper.init({
                 proxyUrl: bot.proxyUrl || undefined,
-                lat: bot.latitude,
-                lng: bot.longitude
+                lat: bot.latitude ?? undefined,
+                lng: bot.longitude ?? undefined
             });
 
             const success = await scraper.submitVerification(bot.username, bot.password || "", code);
