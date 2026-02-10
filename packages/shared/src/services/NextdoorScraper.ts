@@ -108,16 +108,37 @@ export class NextdoorScraper {
             // Post-login wait and check
             await new Promise(r => setTimeout(r, 5000));
 
-            // Check for verification screen
+            // Log page text for diagnostics
+            const pageText = await this.page.evaluate(() => document.body.innerText.substring(0, 500));
+            console.log(`[v4.3] 📄 Post-login page text: ${pageText.replace(/\n/g, ' | ')}`);
+
+            // Check for verification screen - broad detection
             const isVerification = await this.page.evaluate(() => {
-                return !!document.querySelector('input[name="code"]') ||
+                const bodyText = document.body.innerText.toLowerCase();
+                const hasCodeInput = !!document.querySelector('input[name="code"]') ||
                     !!document.querySelector('input[id*="otp"]') ||
-                    document.body.innerText.includes("Enter the code sent to") ||
-                    document.body.innerText.includes("Verify your device");
+                    !!document.querySelector('input[id*="code"]') ||
+                    !!document.querySelector('input[id*="verification"]') ||
+                    !!document.querySelector('input[type="tel"][maxlength]') ||
+                    !!document.querySelector('input[autocomplete="one-time-code"]');
+                const hasVerificationText = bodyText.includes("login code") ||
+                    bodyText.includes("enter the code") ||
+                    bodyText.includes("enter this code") ||
+                    bodyText.includes("verification code") ||
+                    bodyText.includes("verify your") ||
+                    bodyText.includes("two-factor") ||
+                    bodyText.includes("2-step") ||
+                    bodyText.includes("confirm your identity") ||
+                    bodyText.includes("sent to your email") ||
+                    bodyText.includes("code sent to") ||
+                    bodyText.includes("we sent") ||
+                    bodyText.includes("check your email") ||
+                    bodyText.includes("finish logging in");
+                return hasCodeInput || hasVerificationText;
             });
 
             if (isVerification) {
-                console.log("[v4.2] 🔒 Verification Code Required");
+                console.log("[v4.3] 🔒 Verification Code Required — detected on page");
                 throw new Error("VERIFICATION_REQUIRED");
             }
 
@@ -125,15 +146,18 @@ export class NextdoorScraper {
             const success = finalUrl.includes('/news_feed') || await this.page.evaluate(() => !!document.querySelector('[data-testid="post-container"]'));
 
             if (success) {
-                console.log("[v4.1] ✅ Login successful.");
+                console.log("[v4.3] ✅ Login successful.");
                 return true;
             } else {
-                console.log(`[v4.1] ❌ Login failed. Current URL: ${finalUrl}`);
-                // Optional: capture screenshot or HTML if we had a way to return it
+                console.log(`[v4.3] ❌ Login failed. Current URL: ${finalUrl}`);
                 return false;
             }
-        } catch (e) {
-            console.error("[v4.1] ❌ Login sequence failed", e);
+        } catch (e: any) {
+            // CRITICAL: Re-throw VERIFICATION_REQUIRED so the worker can catch it
+            if (e.message === "VERIFICATION_REQUIRED") {
+                throw e;
+            }
+            console.error("[v4.3] ❌ Login sequence failed", e);
             return false;
         }
     }
