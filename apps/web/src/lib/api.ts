@@ -20,6 +20,7 @@ export const apiSvc = {
     createBot: (data: any) => api.post("/admin/bot-accounts", data).then(r => r.data),
     updateBotSources: (id: string, sourceIds: string[]) => api.put(`/admin/bot-accounts/${id}/sources`, { sourceIds }).then(r => r.data),
     startBot: (id: string) => api.post(`/admin/bot-accounts/${id}/start`).then(r => r.data),
+    verifyBot: (id: string, code: string) => api.post(`/admin/bot-accounts/${id}/verify`, { code }).then(r => r.data),
 
     // Campaigns
     getCampaigns: () => api.get("/admin/campaigns").then(r => r.data),

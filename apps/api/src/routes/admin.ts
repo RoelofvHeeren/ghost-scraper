@@ -4,7 +4,7 @@ import { z } from "zod";
 import { db } from "../lib/db.js";
 import { Redis } from "ioredis";
 import { Queue } from "bullmq";
-import { QUEUES } from "@ghost-scraper/shared";
+import { QUEUES, NextdoorScraper } from "@ghost-scraper/shared";
 
 export async function adminRoutes(app: FastifyInstance) {
     const server = app.withTypeProvider<ZodTypeProvider>();

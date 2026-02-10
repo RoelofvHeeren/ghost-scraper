@@ -14,6 +14,11 @@ export function BotAccountsPage() {
     const [editingBot, setEditingBot] = useState<any>(null);
     const [viewHistoryBot, setViewHistoryBot] = useState<string | null>(null);
 
+    // Verification State
+    const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
+    const [verifyBotId, setVerifyBotId] = useState<string | null>(null);
+    const [verificationCode, setVerificationCode] = useState("");
+
     // Live Monitor State
     const [monitoredBotId, setMonitoredBotId] = useState<string | null>(null);
     const [liveLogs, setLiveLogs] = useState<string[]>([]);
@@ -69,6 +74,26 @@ export function BotAccountsPage() {
             queryClient.invalidateQueries({ queryKey: ["bots"] });
         }
     });
+
+    const verifyMutation = useMutation({
+        mutationFn: ({ id, code }: { id: string, code: string }) => apiSvc.verifyBot(id, code),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["bots"] });
+            setIsVerifyModalOpen(false);
+            setVerifyBotId(null);
+            setVerificationCode("");
+            alert("Verification successful! Bot is now ACTIVE.");
+        },
+        onError: (err: any) => {
+            alert(`Verification failed: ${err.response?.data?.error || err.message}`);
+        }
+    });
+
+    const handleVerifySubmit = () => {
+        if (verifyBotId && verificationCode.length >= 6) {
+            verifyMutation.mutate({ id: verifyBotId, code: verificationCode });
+        }
+    };
 
     const handleSaveBot = () => {
         const payload = {
@@ -232,6 +257,14 @@ export function BotAccountsPage() {
                                         <span className={`h-1.5 w-1.5 rounded-full ${bot.status === 'ACTIVE' ? 'bg-green-400 animate-pulse' : 'bg-yellow-400'}`}></span>
                                         {bot.status}
                                     </div>
+                                    {bot.status === 'VERIFICATION_REQUIRED' && (
+                                        <button
+                                            onClick={() => { setVerifyBotId(bot.id); setIsVerifyModalOpen(true); }}
+                                            className="mt-2 text-xs bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded w-full animate-bounce font-bold shadow-lg"
+                                        >
+                                            🔓 Verify Now
+                                        </button>
+                                    )}
                                 </div>
 
                                 <div className="flex items-center gap-4 mb-6">
@@ -446,6 +479,36 @@ export function BotAccountsPage() {
                             </div>
                         ))
                     )}
+                </div>
+            </Modal>
+
+            {/* Verification Modal */}
+            <Modal isOpen={isVerifyModalOpen} onClose={() => setIsVerifyModalOpen(false)} title="🔐 Enter Verification Code">
+                <div className="space-y-4">
+                    <p className="text-gray-300 text-sm">
+                        Nextdoor has sent a verification code to the bot's email. Please enter it below to unblock the account.
+                    </p>
+                    <div>
+                        <label className="text-xs text-gray-400 uppercase tracking-wider block mb-1">6-Digit Code</label>
+                        <input
+                            type="text"
+                            value={verificationCode}
+                            onChange={(e) => setVerificationCode(e.target.value)}
+                            placeholder="123456"
+                            className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-center text-2xl tracking-[1em] focus:outline-none focus:border-teal-accent/50"
+                            maxLength={6}
+                        />
+                    </div>
+                    <div className="pt-4 flex justify-end gap-3">
+                        <button onClick={() => setIsVerifyModalOpen(false)} className="px-4 py-2 text-gray-400 hover:text-white transition-colors">Cancel</button>
+                        <button
+                            disabled={verifyMutation.isPending || verificationCode.length < 6}
+                            onClick={handleVerifySubmit}
+                            className="px-6 py-2 bg-teal-accent text-white font-bold rounded-lg shadow-lg hover:bg-teal-accent/90 transition-all disabled:opacity-50"
+                        >
+                            {verifyMutation.isPending ? 'Verifying...' : 'Submit Code'}
+                        </button>
+                    </div>
                 </div>
             </Modal>
         </div >
