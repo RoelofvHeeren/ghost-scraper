@@ -240,37 +240,105 @@ export class NextdoorScraper {
     async submitVerification(username, password, code) {
         if (!this.page)
             throw new Error("Scraper not initialized");
-        console.log(`[v4.2] 🔐 verification flow for ${username}...`);
+        console.log(`[v4.3] 🔐 verification flow for ${username}...`);
         // 1. Perform standard login (triggers code)
         try {
             await this.login(username, password);
         }
         catch (e) {
             if (e.message !== "VERIFICATION_REQUIRED") {
-                console.error("[v4.2] ❌ Login failed during verification flow:", e);
+                console.error("[v4.3] ❌ Login failed during verification flow:", e);
                 return false;
             }
+            console.log("[v4.3] ✅ Verification screen detected, continuing...");
         }
         // 2. Enter Code
-        console.log(`[v4.2] 🔢 Entering verification code...`);
+        console.log(`[v4.3] 🔢 Entering verification code: ${code}`);
         try {
-            const inputSelector = 'input[name="code"], input[id*="otp"]';
-            await this.page.waitForSelector(inputSelector, { timeout: 10000 });
-            await this.page.type(inputSelector, code, { delay: 100 });
-            // 3. Submit
-            const btnSelector = 'button[type="submit"], button:has-text("Verify"), button:has-text("Submit")';
-            await this.page.click(btnSelector);
-            await this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
+            // Log all visible inputs for debugging
+            const inputs = await this.page.evaluate(() => {
+                const els = document.querySelectorAll('input');
+                return Array.from(els).map(el => ({
+                    type: el.type, name: el.name, id: el.id,
+                    placeholder: el.placeholder, visible: el.offsetParent !== null
+                }));
+            });
+            console.log(`[v4.3] 📋 Found inputs: ${JSON.stringify(inputs)}`);
+            // Try multiple selector strategies
+            const selectors = [
+                'input[name="code"]',
+                'input[id*="otp"]',
+                'input[id*="code"]',
+                'input[id*="login"]',
+                'input[id*="verification"]',
+                'input[autocomplete="one-time-code"]',
+                'input[type="tel"]',
+                'input[type="number"]',
+                'input[inputmode="numeric"]',
+                'input[type="text"]',
+            ];
+            let foundSelector = null;
+            for (const sel of selectors) {
+                const el = await this.page.$(sel);
+                if (el) {
+                    const isVisible = await this.page.evaluate((s) => {
+                        const e = document.querySelector(s);
+                        return e ? e.offsetParent !== null : false;
+                    }, sel);
+                    if (isVisible) {
+                        foundSelector = sel;
+                        console.log(`[v4.3] ✅ Found input with selector: ${sel}`);
+                        break;
+                    }
+                }
+            }
+            if (!foundSelector) {
+                console.error("[v4.3] ❌ Could not find any code input field");
+                return false;
+            }
+            // Clear any existing value and type the code
+            await this.page.click(foundSelector, { clickCount: 3 });
+            await this.page.type(foundSelector, code, { delay: 120 });
+            // 3. Submit - try multiple button strategies
+            console.log("[v4.3] 🖱️ Looking for submit button...");
+            const buttonClicked = await this.page.evaluate(() => {
+                const buttons = document.querySelectorAll('button, input[type="submit"]');
+                const targetTexts = ['login', 'verify', 'submit', 'confirm', 'continue'];
+                for (const btn of buttons) {
+                    const text = btn.innerText?.toLowerCase().trim();
+                    if (targetTexts.some(t => text?.includes(t))) {
+                        btn.click();
+                        return text;
+                    }
+                }
+                return null;
+            });
+            console.log(`[v4.3] 🖱️ Clicked button: "${buttonClicked}"`);
+            if (!buttonClicked) {
+                // Fallback: try submit via Enter key
+                console.log("[v4.3] ⌨️ No button found, pressing Enter...");
+                await this.page.keyboard.press('Enter');
+            }
+            await this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch((e) => console.log(`[v4.3] ⚠️ Post-verify nav timeout: ${e.message}`));
             // 4. Verify Success
+            await new Promise(r => setTimeout(r, 3000));
             const finalUrl = this.page.url();
-            const success = finalUrl.includes('/news_feed');
+            const pageText = await this.page.evaluate(() => document.body.innerText.substring(0, 300));
+            console.log(`[v4.3] 📄 Post-verify URL: ${finalUrl}`);
+            console.log(`[v4.3] 📄 Post-verify text: ${pageText.replace(/\n/g, ' | ')}`);
+            const success = finalUrl.includes('/news_feed') ||
+                finalUrl.includes('/neighborhood') ||
+                !finalUrl.includes('/login');
             if (success) {
-                console.log("[v4.2] ✅ Verification successful!");
+                console.log("[v4.3] ✅ Verification successful!");
                 return true;
+            }
+            else {
+                console.log("[v4.3] ❌ Verification may have failed, still on login page");
             }
         }
         catch (e) {
-            console.error("[v4.2] ❌ Error entering verification code:", e);
+            console.error("[v4.3] ❌ Error during verification:", e);
         }
         return false;
     }
