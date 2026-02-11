@@ -32,6 +32,7 @@ enum AccountStatus {
   BANNED
   NEEDS_LOGIN
   NEEDS_REVIEW
+  VERIFICATION_REQUIRED
 }
 
 enum ActionType {
