@@ -1,4 +1,4 @@
-// Triggering redeploy to apply Prisma table fixes
+// v4.3 verification selector fix deploy
 import dotenv from "dotenv";
 import { buildApp } from "./app.js";
 import { Server } from "socket.io";
