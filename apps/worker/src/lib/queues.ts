@@ -53,3 +53,13 @@ export async function publishBotLog(botId: string, message: string, type: 'info'
     // Publish to a specific channel that the API will listen to
     await connection.publish("bot-logs", payload);
 }
+
+export async function publishBotScreenshot(botId: string, base64Image: string) {
+    // Publish to a specific channel that the API will listen to
+    const payload = JSON.stringify({
+        botId,
+        image: base64Image,
+        timestamp: new Date().toISOString()
+    });
+    await connection.publish("bot-screenshots", payload);
+}

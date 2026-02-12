@@ -37,12 +37,12 @@ const subscriber = new Redis(redisOptions);
 export function initLogStream() {
     console.log("🔌 Initializing Log Stream Service...");
 
-    subscriber.subscribe("bot-logs", (err: any) => {
+    subscriber.subscribe("bot-logs", "bot-screenshots", (err: any) => {
         if (err) {
-            console.error("Failed to subscribe to bot-logs:", err);
+            console.error("Failed to subscribe to channels:", err);
             return;
         }
-        console.log("✅ Subscribed to 'bot-logs' channel");
+        console.log("✅ Subscribed to 'bot-logs' and 'bot-screenshots' channels");
     });
 
     subscriber.on("message", (channel: string, message: string) => {
@@ -55,6 +55,16 @@ export function initLogStream() {
                 }
             } catch (e) {
                 console.error("Failed to parse log message:", e);
+            }
+        } else if (channel === "bot-screenshots") {
+            try {
+                const payload = JSON.parse(message);
+                const { botId, image } = payload;
+                if (botId) {
+                    emitToSession(botId, 'screenshot', image);
+                }
+            } catch (e) {
+                console.error("Failed to parse screenshot message:", e);
             }
         }
     });

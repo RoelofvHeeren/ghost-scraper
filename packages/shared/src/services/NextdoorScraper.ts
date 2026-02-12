@@ -2,7 +2,7 @@
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { executablePath, Page, Browser } from 'puppeteer';
-import { TextVerifiedService } from './TextVerifiedService.js';
+import { GeminiService } from './GeminiService.js';
 
 puppeteer.use(StealthPlugin());
 
@@ -19,8 +19,16 @@ interface ScrapeResult {
 export class NextdoorScraper {
     private browser: Browser | null = null;
     private page: Page | null = null;
+    private gemini: GeminiService;
+    private onScreenshot?: (base64: string) => Promise<void>;
+    private screenshotInterval: NodeJS.Timeout | null = null;
 
-    async init(options: { proxyUrl?: string, sessionData?: any, lat?: number, lng?: number }) {
+    constructor() {
+        this.gemini = new GeminiService();
+    }
+
+    async init(options: { proxyUrl?: string, sessionData?: any, lat?: number, lng?: number, onScreenshot?: (base64: string) => Promise<void> }) {
+        this.onScreenshot = options.onScreenshot;
         const args = [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -61,6 +69,24 @@ export class NextdoorScraper {
         if (options.sessionData && options.sessionData.cookies) {
             await this.page.setCookie(...options.sessionData.cookies);
         }
+
+        // Start screenshot loop if callback provided
+        if (this.onScreenshot) {
+            this.startScreenshotLoop();
+        }
+    }
+
+    private startScreenshotLoop() {
+        if (this.screenshotInterval) clearInterval(this.screenshotInterval);
+        this.screenshotInterval = setInterval(async () => {
+            if (!this.page || this.page.isClosed()) return;
+            try {
+                const base64 = await this.page.screenshot({ encoding: 'base64', type: 'jpeg', quality: 50 });
+                if (this.onScreenshot) await this.onScreenshot(`data:image/jpeg;base64,${base64}`);
+            } catch (e) {
+                // Ignore screenshot errors (page might be navigating)
+            }
+        }, 2000); // Every 2 seconds
     }
 
     async login(username: string, password?: string): Promise<boolean> {
@@ -290,116 +316,86 @@ export class NextdoorScraper {
     async submitVerification(username: string, password: string, code: string): Promise<boolean> {
         if (!this.page) throw new Error("Scraper not initialized");
 
-        console.log(`[v4.3] 🔐 verification flow for ${username}...`);
+        console.log(`[v4.4] 🔐 verification flow for ${username}...`);
 
         // 1. Perform standard login (triggers code)
         try {
             await this.login(username, password);
         } catch (e: any) {
             if (e.message !== "VERIFICATION_REQUIRED") {
-                console.error("[v4.3] ❌ Login failed during verification flow:", e);
+                console.error("[v4.4] ❌ Login failed during verification flow:", e);
                 return false;
             }
-            console.log("[v4.3] ✅ Verification screen detected, continuing...");
+            console.log("[v4.4] ✅ Verification screen detected, analyzing with AI...");
         }
 
-        // 2. Enter Code
-        console.log(`[v4.3] 🔢 Entering verification code: ${code}`);
+        // 2. Analyze page with Gemini
+        console.log(`[v4.4] 🧠 Asking Gemini to find verification inputs...`);
+        let selectors = { inputSelector: 'input[name="code"]', submitSelector: 'button[type="submit"]' };
+
         try {
-            // Log all visible inputs for debugging
-            const inputs = await this.page.evaluate(() => {
-                const els = document.querySelectorAll('input');
-                return Array.from(els).map(el => ({
-                    type: el.type, name: el.name, id: el.id,
-                    placeholder: el.placeholder, visible: el.offsetParent !== null
-                }));
+            // Get simplified HTML for LLM
+            const htmlSnapshot = await this.page.evaluate(() => {
+                // Remove scripts, styles, svgs to reduce token count
+                const clone = document.body.cloneNode(true) as HTMLElement;
+                clone.querySelectorAll('script, style, svg, path, link, meta').forEach(el => el.remove());
+                return clone.outerHTML.substring(0, 15000); // Cap size
             });
-            console.log(`[v4.3] 📋 Found inputs: ${JSON.stringify(inputs)}`);
 
-            // Try multiple selector strategies
-            const selectors = [
-                'input[name="code"]',
-                'input[id*="otp"]',
-                'input[id*="code"]',
-                'input[id*="login"]',
-                'input[id*="verification"]',
-                'input[autocomplete="one-time-code"]',
-                'input[type="tel"]',
-                'input[type="number"]',
-                'input[inputmode="numeric"]',
-                'input[type="text"]',
-            ];
+            selectors = await this.gemini.analyzeVerificationPage(htmlSnapshot);
+            console.log(`[v4.4] 🤖 Gemini found selectors:`, selectors);
+        } catch (err) {
+            console.error("[v4.4] ⚠️ Gemini analysis failed, falling back to manual detection", err);
+        }
 
-            let foundSelector: string | null = null;
-            for (const sel of selectors) {
-                const el = await this.page.$(sel);
-                if (el) {
-                    const isVisible = await this.page.evaluate((s: string) => {
-                        const e = document.querySelector(s);
-                        return e ? (e as HTMLElement).offsetParent !== null : false;
-                    }, sel);
-                    if (isVisible) {
-                        foundSelector = sel;
-                        console.log(`[v4.3] ✅ Found input with selector: ${sel}`);
-                        break;
-                    }
-                }
-            }
+        // 3. Enter Code & Submit
+        try {
+            const { inputSelector, submitSelector } = selectors;
 
-            if (!foundSelector) {
-                console.error("[v4.3] ❌ Could not find any code input field");
-                return false;
-            }
+            // Wait for input
+            await this.page.waitForSelector(inputSelector, { timeout: 10000 });
 
-            // Clear any existing value and type the code
-            await this.page.click(foundSelector, { clickCount: 3 });
-            await this.page.type(foundSelector, code, { delay: 120 });
+            // Clear and type
+            await this.page.click(inputSelector, { clickCount: 3 });
+            await this.page.type(inputSelector, code, { delay: 150 });
+            console.log(`[v4.4] 🔢 Entered code into ${inputSelector}`);
 
-            // 3. Submit - try multiple button strategies
-            console.log("[v4.3] 🖱️ Looking for submit button...");
-            const buttonClicked = await this.page.evaluate(() => {
-                const buttons = document.querySelectorAll('button, input[type="submit"]');
-                const targetTexts = ['login', 'verify', 'submit', 'confirm', 'continue'];
-                for (const btn of buttons) {
-                    const text = (btn as HTMLElement).innerText?.toLowerCase().trim();
-                    if (targetTexts.some(t => text?.includes(t))) {
-                        (btn as HTMLElement).click();
-                        return text;
-                    }
-                }
-                return null;
-            });
-            console.log(`[v4.3] 🖱️ Clicked button: "${buttonClicked}"`);
-
-            if (!buttonClicked) {
-                // Fallback: try submit via Enter key
-                console.log("[v4.3] ⌨️ No button found, pressing Enter...");
+            // Submit
+            console.log(`[v4.4] 🖱️ Clicking submit button: ${submitSelector}`);
+            const submitBtn = await this.page.$(submitSelector);
+            if (submitBtn) {
+                await submitBtn.click();
+            } else {
+                console.log("[v4.4] ⚠️ Submit button not found, pressing Enter");
                 await this.page.keyboard.press('Enter');
             }
 
             await this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(
-                (e: any) => console.log(`[v4.3] ⚠️ Post-verify nav timeout: ${e.message}`)
+                (e: any) => console.log(`[v4.4] ⚠️ Post-verify nav timeout: ${e.message}`)
             );
 
             // 4. Verify Success
             await new Promise(r => setTimeout(r, 3000));
             const finalUrl = this.page.url();
             const pageText = await this.page.evaluate(() => document.body.innerText.substring(0, 300));
-            console.log(`[v4.3] 📄 Post-verify URL: ${finalUrl}`);
-            console.log(`[v4.3] 📄 Post-verify text: ${pageText.replace(/\n/g, ' | ')}`);
+            console.log(`[v4.4] 📄 Post-verify URL: ${finalUrl}`);
+            console.log(`[v4.4] 📄 Post-verify text: ${pageText.replace(/\n/g, ' | ')}`);
 
             const success = finalUrl.includes('/news_feed') ||
                 finalUrl.includes('/neighborhood') ||
                 !finalUrl.includes('/login');
 
             if (success) {
-                console.log("[v4.3] ✅ Verification successful!");
+                console.log("[v4.4] ✅ Verification successful!");
                 return true;
             } else {
-                console.log("[v4.3] ❌ Verification may have failed, still on login page");
+                console.log("[v4.4] ❌ Verification may have failed, still on login page");
+                // Log final state logic
+                const pageText = await this.page.evaluate(() => document.body.innerText.substring(0, 300));
+                console.log(`[v4.4] End state text: ${pageText.replace(/\n/g, ' | ')}`);
             }
         } catch (e: any) {
-            console.error("[v4.3] ❌ Error during verification:", e);
+            console.error("[v4.4] ❌ Error during verification:", e);
         }
 
         return false;
@@ -410,6 +406,9 @@ export class NextdoorScraper {
     }
 
     async close() {
-        await this.browser?.close();
+        if (this.screenshotInterval) clearInterval(this.screenshotInterval);
+        if (this.browser) {
+            await this.browser.close();
+        }
     }
 }

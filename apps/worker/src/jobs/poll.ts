@@ -1,7 +1,7 @@
 import { Job } from "bullmq";
 import { db } from "../lib/db.js";
 import { NextdoorScraper } from "@ghost-scraper/shared";
-import { processQueue, publishBotLog } from "../lib/queues.js";
+import { processQueue, publishBotLog, publishBotScreenshot } from "../lib/queues.js";
 
 
 /**
@@ -43,7 +43,10 @@ export async function pollBotJob(job: Job) {
                 sessionData: bot.sessionData,
                 proxyUrl: bot.proxyUrl || undefined,
                 lat: bot.latitude,
-                lng: bot.longitude
+                lng: bot.longitude,
+                onScreenshot: async (base64) => {
+                    await publishBotScreenshot(botId, base64);
+                }
             });
 
             await publishBotLog(botId, `🔄 Initializing scraper...`);
