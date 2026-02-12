@@ -76,6 +76,136 @@ export async function adminRoutes(app: FastifyInstance) {
         });
     });
 
+    server.post("/clients", {
+        schema: {
+            body: z.object({
+                name: z.string().min(1),
+                twilioNumber: z.string().optional()
+            })
+        }
+    }, async (req) => {
+        return db.client.create({
+            data: req.body as any
+        });
+    });
+
+    // --- Sources ---
+    server.get("/sources", async () => {
+        return db.source.findMany({
+            orderBy: { createdAt: "desc" },
+            include: { connectorState: true, assignedBots: { include: { bot: true } } }
+        });
+    });
+
+    server.post("/sources", {
+        schema: {
+            body: z.object({
+                name: z.string(),
+                type: z.enum(["NEXTDOOR", "REDDIT", "FACEBOOK", "CRAIGSLIST"]),
+                config: z.any(),
+                enabled: z.boolean().default(true)
+            })
+        }
+    }, async (req) => {
+        return db.source.create({
+            data: req.body as any
+        });
+    });
+
+    // --- Bot Accounts ---
+    server.get("/bot-accounts", async () => {
+        return db.botAccount.findMany({
+            orderBy: { createdAt: "desc" },
+            include: {
+                campaign: true,
+                assignedSources: {
+                    include: { source: true },
+                    orderBy: { priority: 'asc' }
+                }
+            }
+        });
+    });
+
+    server.post("/bot-accounts", {
+        schema: {
+            body: z.object({
+                platform: z.enum(["NEXTDOOR", "REDDIT", "FACEBOOK", "CRAIGSLIST"]),
+                username: z.string(),
+                password: z.string().optional(),
+                email: z.string().optional(),
+                proxyUrl: z.string().optional(),
+                cityMatches: z.array(z.string()).default([]),
+                campaignId: z.string().optional(),
+                sourceIds: z.array(z.string()).optional(),
+                maxDailyPosts: z.number().default(10)
+            })
+        }
+    }, async (req) => {
+        const { sourceIds, ...botData } = req.body as any;
+
+        const bot = await db.botAccount.create({
+            data: botData
+        });
+
+        // Create source assignments if provided
+        if (sourceIds && sourceIds.length > 0) {
+            await db.botSourceAssignment.createMany({
+                data: sourceIds.map((sourceId: string, index: number) => ({
+                    botId: bot.id,
+                    sourceId,
+                    priority: index
+                }))
+            });
+        }
+
+        return db.botAccount.findUnique({
+            where: { id: bot.id },
+            include: { assignedSources: { include: { source: true } } }
+        });
+    });
+
+    server.post("/bot-accounts/:id/start", {
+        schema: {
+            params: z.object({ id: z.string() })
+        }
+    }, async (req, reply) => {
+        try {
+            const { id } = req.params;
+
+            // Auto-assign source if needed
+            const bot = await db.botAccount.findUnique({
+                where: { id },
+                include: { assignedSources: true }
+            });
+
+            if (!bot) {
+                return reply.status(404).send({ error: "Bot not found" });
+            }
+
+            if (bot.assignedSources.length === 0) {
+                let source = await db.source.findFirst({ where: { type: bot.platform } });
+                if (!source) {
+                    source = await db.source.create({
+                        data: {
+                            name: `${bot.platform} Feed`,
+                            type: bot.platform,
+                            config: {}
+                        }
+                    });
+                }
+                await db.botSourceAssignment.create({
+                    data: { botId: id, sourceId: source.id, priority: 0 }
+                });
+            }
+
+            await pollQueue.add("manual-trigger", { botId: id });
+            return { message: "Monitoring started" };
+        } catch (error) {
+            console.error("Error starting bot monitoring:", error);
+            return reply.status(500).send({ error: "Internal Server Error", details: (error as any).message });
+        }
+    });
+
     // ... (skipping unchanged parts) ...
 
     server.post("/bot-accounts/:id/verify", {

@@ -65,6 +65,9 @@ export function BotAccountsPage() {
             setIsModalOpen(false);
             setEditingBot(null);
             setNewBot({ username: "", password: "", platform: "NEXTDOOR", sourceIds: [], campaignId: "", proxyUrl: "", cityMatches: "" });
+        },
+        onError: (err: any) => {
+            alert(`Failed to create bot: ${err.response?.data?.error || err.message}`);
         }
     });
 
